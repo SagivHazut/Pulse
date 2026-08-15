@@ -19,12 +19,14 @@ Then press `i` for the iOS simulator, `a` for Android, or `w` for the browser. E
 | --- | --- |
 | `npm start` | Expo dev server |
 | `npm run ios` / `npm run android` / `npm run web` | Start on a specific platform |
-| `npm test` | Jest unit tests (156 tests, engine + persistence + drag math + economy + modes + ad pacing) |
+| `npm test` | Jest unit tests (212 tests: engine, persistence, drag math, economy, modes, ad pacing, consent rules, board layout) |
 | `npm run test:coverage` | Tests with a coverage report |
 | `npm run typecheck` | `tsc --noEmit`, strict mode |
 | `npm run lint` | ESLint (expo config + React Compiler rules) |
 | `npm run audio` | Regenerate every sound file from source |
 | `npm run prebuild:clean` | Regenerate `ios/` and `android/` |
+| `npm run preflight` | Pre-launch checks — run before every store submission |
+| `npm run legal` | Render `legal/*.md` into `docs/` for GitHub Pages |
 
 ---
 
@@ -485,4 +487,3 @@ Almost every number worth changing lives in `src/constants/config.ts`: grid size
 ## Not built (deliberately)
 
 Leaderboards, cloud save, challenges, events, multiplayer, season pass, remove-ads IAP. The architecture leaves room for all of them — the store boundaries and the ad/analytics interfaces are the seams — but none is in this build.
-# Pulse

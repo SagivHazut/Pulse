@@ -1,0 +1,281 @@
+import React, { useCallback, useMemo } from 'react';
+import { View } from 'react-native';
+import { Gesture, GestureDetector } from 'react-native-gesture-handler';
+import {
+  runOnJS,
+  useSharedValue,
+  withSequence,
+  withSpring,
+  withTiming,
+  type SharedValue,
+} from 'react-native-reanimated';
+
+import { ANIMATION } from '../../constants/config';
+import { canPlaceOnGrid, cellUnderPiece, isOffBoard } from '../../game/dragMath';
+import { useTheme } from '../../hooks/useTheme';
+import { playSfx } from '../../services/audio';
+import { haptics } from '../../services/haptics';
+import { ELEVATION } from '../../theme/tokens';
+import type { Piece } from '../../types';
+import { useDragContext } from './DragContext';
+import { PieceShape, pieceHeight, pieceWidth } from './PieceShape';
+
+type Props = {
+  piece: Piece;
+  /** Which tray slot this piece sits in. Slots outlive pieces. */
+  slotIndex: number;
+  /** Measured centres of the tray slots, owned by {@link PieceTray}. */
+  slotCenters: SharedValue<{ x: number; y: number }[]>;
+  slotSize: number;
+  /** True when no placement exists for this piece — it renders dimmed. */
+  dead: boolean;
+};
+
+/**
+ * A piece in the tray, and the gesture that lifts it out.
+ *
+ * Performance shape:
+ *  - The airborne piece follows the finger through shared values only. No React
+ *    state is touched while dragging, so the gesture never waits on a render.
+ *  - Validity is evaluated in a worklet against a flat 0/1 mirror of the board.
+ *  - The JS thread only hears about the drag when the snapped target cell
+ *    changes, which drives the ghost and the completing-line highlight.
+ */
+export function DraggablePiece({ piece, slotIndex, slotCenters, slotSize, dead }: Props) {
+  const theme = useTheme();
+  const {
+    metrics,
+    rows,
+    columns,
+    boardOrigin,
+    rootOrigin,
+    occupancy,
+    motion,
+    setPreview,
+    setDraggingPiece,
+    draggingPiece,
+    onDrop,
+    onInvalidDrop,
+    enabled,
+  } = useDragContext();
+
+  /**
+   * Which drag this piece owns. The fly-home animation's completion callback
+   * compares this against the live session, so a cancelled return can never
+   * clean up a *different* piece's drag — that race left the airborne piece
+   * invisible.
+   */
+  const dragId = useSharedValue(0);
+
+  // Last reported target, so we only cross the bridge when it actually changes.
+  const lastRow = useSharedValue(-999);
+  const lastCol = useSharedValue(-999);
+  const lastValid = useSharedValue(-1);
+
+  const { cellSize, gap, cellStride: stride } = metrics;
+  const fullWidth = pieceWidth(piece, cellSize, gap);
+  const fullHeight = pieceHeight(piece, cellSize, gap);
+
+  /** Plain data captured by the worklet — no class instances, no React closures. */
+  const shape = useMemo(
+    () => piece.cells.map((c) => ({ r: c.r, c: c.c, wild: c.power === 'rainbow' ? 1 : 0 })),
+    [piece.cells],
+  );
+
+  /** Lift the piece above the finger so the hand never covers it. */
+  const liftAmount = Math.max(cellSize * 1.35, 56);
+  const isAirborne = draggingPiece?.id === piece.id;
+
+  const beginDrag = useCallback(() => {
+    playSfx('pickup');
+    haptics.light();
+    setDraggingPiece(piece);
+  }, [piece, setDraggingPiece]);
+
+  /**
+   * Safe to call from a stale animation: it only relinquishes the drag layer if
+   * this piece still owns it, so a cancelled fly-home can never cancel a newer
+   * drag that has already taken over.
+   */
+  const endDrag = useCallback(() => {
+    setDraggingPiece((current) => (current?.id === piece.id ? null : current));
+    setPreview(null);
+  }, [piece.id, setDraggingPiece, setPreview]);
+
+  const commit = useCallback(
+    (row: number, col: number) => onDrop(piece.id, row, col),
+    [onDrop, piece.id],
+  );
+
+  const pan = useMemo(() => {
+    const pieceSize = { width: fullWidth, height: fullHeight };
+
+    /** Move the drag layer and return the grid cell the piece is hovering. */
+    const track = (tx: number, ty: number) => {
+      'worklet';
+      const slot = slotCenters.value[slotIndex];
+      if (!slot || (slot.x === 0 && slot.y === 0)) {
+        // Not laid out yet: report a target far off the board rather than a
+        // plausible-looking wrong one.
+        return { row: -999, col: -999 };
+      }
+      const centerX = slot.x + tx;
+      const centerY = slot.y + ty - liftAmount;
+      motion.centerX.value = centerX - rootOrigin.value.x;
+      motion.centerY.value = centerY - rootOrigin.value.y;
+
+      return cellUnderPiece(centerX, centerY, pieceSize, {
+        originX: boardOrigin.value.x,
+        originY: boardOrigin.value.y,
+        stride,
+      });
+    };
+
+    /** Where the piece rests in its slot, in drag-layer coordinates. */
+    const home = () => {
+      'worklet';
+      const slot = slotCenters.value[slotIndex];
+      return {
+        x: (slot?.x ?? 0) - rootOrigin.value.x,
+        y: (slot?.y ?? 0) - rootOrigin.value.y,
+      };
+    };
+
+    return Gesture.Pan()
+      .enabled(enabled)
+      .minDistance(0)
+      .onBegin(() => {
+        'worklet';
+        lastRow.value = -999;
+        lastCol.value = -999;
+        lastValid.value = -1;
+
+        motion.session.value += 1;
+        dragId.value = motion.session.value;
+        motion.active.value = 1;
+        motion.wobble.value = 0;
+        motion.scale.value = ANIMATION.trayScale;
+        track(0, 0);
+        motion.scale.value = withSpring(1, { damping: 16, stiffness: 320 });
+        runOnJS(beginDrag)();
+      })
+      .onUpdate((event) => {
+        'worklet';
+        const { row, col } = track(event.translationX, event.translationY);
+
+        // Ignore targets nowhere near the board.
+        if (isOffBoard(row, col, rows, columns)) {
+          if (lastValid.value !== -1) {
+            lastValid.value = -1;
+            lastRow.value = -999;
+            lastCol.value = -999;
+            runOnJS(setPreview)(null);
+          }
+          return;
+        }
+
+        const valid = canPlaceOnGrid(occupancy.value, rows, columns, shape, row, col) ? 1 : 0;
+        if (row !== lastRow.value || col !== lastCol.value || valid !== lastValid.value) {
+          lastRow.value = row;
+          lastCol.value = col;
+          lastValid.value = valid;
+          runOnJS(setPreview)({ row, col, valid: valid === 1 });
+        }
+      })
+      .onFinalize(() => {
+        'worklet';
+        const placed = lastValid.value === 1;
+        const wasOverBoard = lastRow.value !== -999;
+        const row = lastRow.value;
+        const col = lastCol.value;
+
+        if (placed) {
+          // The board takes over rendering this piece immediately.
+          motion.active.value = 0;
+          runOnJS(endDrag)();
+          runOnJS(commit)(row, col);
+          return;
+        }
+
+        if (wasOverBoard) {
+          motion.wobble.value = withSequence(
+            withTiming(1, { duration: 55 }),
+            withTiming(-1, { duration: 55 }),
+            withTiming(0.55, { duration: 55 }),
+            withTiming(0, { duration: 55 }),
+          );
+          runOnJS(onInvalidDrop)();
+        }
+
+        // Fly home, then hand rendering back to the tray slot.
+        const rest = home();
+        motion.scale.value = withSpring(ANIMATION.trayScale, { damping: 18, stiffness: 300 });
+        motion.centerX.value = withSpring(rest.x, { damping: 20, stiffness: 240 });
+        motion.centerY.value = withSpring(rest.y, { damping: 20, stiffness: 240 }, () => {
+          'worklet';
+          // Only hide the layer if a newer drag has not already claimed it —
+          // but always release React state, which is keyed to this piece and so
+          // cannot disturb whoever came next.
+          if (motion.session.value === dragId.value) motion.active.value = 0;
+          runOnJS(endDrag)();
+        });
+      });
+  }, [
+    beginDrag,
+    boardOrigin,
+    columns,
+    commit,
+    dragId,
+    enabled,
+    endDrag,
+    fullHeight,
+    fullWidth,
+    lastCol,
+    lastRow,
+    lastValid,
+    liftAmount,
+    motion,
+    occupancy,
+    onInvalidDrop,
+    rootOrigin,
+    rows,
+    setPreview,
+    shape,
+    slotCenters,
+    slotIndex,
+    stride,
+  ]);
+
+  return (
+    <GestureDetector gesture={pan}>
+      <View
+        collapsable={false}
+        style={{
+          width: slotSize,
+          height: slotSize,
+          alignItems: 'center',
+          justifyContent: 'center',
+        }}
+        accessible
+        accessibilityRole="image"
+        accessibilityLabel={`${piece.cells.length} block piece${
+          dead ? ', no space left on the board' : ''
+        }`}
+        accessibilityHint="Drag onto the board to place"
+      >
+        <View
+          style={[
+            {
+              transform: [{ scale: ANIMATION.trayScale }],
+              // Hidden — not unmounted — while the drag layer owns this piece.
+              opacity: isAirborne ? 0 : dead ? 0.32 : 1,
+            },
+            ELEVATION.tile,
+          ]}
+        >
+          <PieceShape piece={piece} cellSize={cellSize} gap={gap} blocks={theme.blocks} />
+        </View>
+      </View>
+    </GestureDetector>
+  );
+}
