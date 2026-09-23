@@ -61,9 +61,10 @@ function checkLink(key, value, { scheme, required }) {
 }
 
 // A reachable privacy policy is required by both stores and by AdMob policy for
-// any app that shows ads. Terms and support are strongly advisable, not blocking.
+// any app that shows ads. Support is advisable, not blocking. There is no terms
+// link by design: neither store requires one and Apple applies its Standard EULA
+// to apps that supply none.
 checkLink('privacy', legal.privacy, { scheme: 'https://', required: true });
-checkLink('terms', legal.terms, { scheme: 'https://', required: false });
 checkLink('support', legal.support, { scheme: 'mailto:', required: false });
 
 if (/'https?:\/\/(?!.*\bexpo\b)/.test(appConstants)) {
@@ -204,8 +205,63 @@ warn(
     'and EEA traffic cannot be monetised legally.',
 );
 
+/**
+ * Is the privacy policy actually *there*?
+ *
+ * Checking only that the field is filled in is what let this project sit at
+ * "14 passed, 0 failed" while the configured URL returned 404 — a hard blocker
+ * for both store reviews, invisible to every other check here.
+ *
+ * A 404 fails. Being unable to reach the network at all only warns, so the
+ * script still runs on a plane.
+ */
+async function checkPrivacyReachable() {
+  const url = legal.privacy;
+  if (typeof url !== 'string' || !url.startsWith('https://')) return;
+  try {
+    const res = await fetch(url, { method: 'GET', redirect: 'follow' });
+    if (res.ok) pass(`privacy policy reachable (HTTP ${res.status})`);
+    else
+      fail(
+        `Privacy policy URL returns HTTP ${res.status}`,
+        `${url}\n    Both stores reject a listing whose privacy policy does not load.`,
+      );
+  } catch {
+    warn(
+      'Manual: privacy policy reachability',
+      `Could not reach ${url} from here. Confirm it loads publicly before submitting.`,
+    );
+  }
+}
+
+/**
+ * Every ad format the game can show should have a unit on both platforms.
+ *
+ * A blank unit id is not an error — the resolver deliberately disables that
+ * format in release rather than serving Google's test inventory. But it means
+ * the placement silently earns nothing, which is worth saying out loud.
+ */
+function checkAdFormats() {
+  for (const platform of ['ios', 'android']) {
+    for (const format of ['Rewarded', 'Interstitial']) {
+      const key = `${platform}${format}UnitId`;
+      const value = admob[key];
+      if (typeof value === 'string' && value.trim().length > 0) continue;
+      warn(
+        `${platform} ${format.toLowerCase()} ad unit not configured`,
+        `extra.admob.${key} is empty, so the ${format.toLowerCase()} placement is ` +
+          'disabled in release builds and earns nothing. Create the unit in AdMob ' +
+          'and paste its id, or accept that the placement is off.',
+      );
+    }
+  }
+}
+
+checkAdFormats();
+
 // --------------------------------------------------------------------- report
 
+async function report() {
 const green = (s) => `\x1b[32m${s}\x1b[0m`;
 const red = (s) => `\x1b[31m${s}\x1b[0m`;
 const yellow = (s) => `\x1b[33m${s}\x1b[0m`;
@@ -220,3 +276,6 @@ console.log(
 );
 
 process.exit(failures.length > 0 ? 1 : 0);
+}
+
+checkPrivacyReachable().then(report);
