@@ -48,24 +48,79 @@ function isMmkvSupported(): boolean {
   }
 }
 
+/** The slice of MMKV v4's surface this app uses. */
+type MmkvInstance = {
+  getString(key: string): string | undefined;
+  set(key: string, value: string): void;
+  remove(key: string): boolean;
+};
+
 function tryLoadMmkv(): KeyValue | null {
   if (!isMmkvSupported()) return null;
   try {
     // Required lazily so the import only ever runs where it can succeed. Metro
     // resolves it to an empty module when the package is not installed at all
     // (see metro.config.js), hence the shape check.
-    const mod = require('react-native-mmkv') as {
-      MMKV?: new (config?: { id?: string }) => KeyValue;
+    const mod = require('react-native-mmkv') as { createMMKV?: (config?: { id?: string }) => MmkvInstance };
+
+    /**
+     * v4 is a different API from v3, in two ways that both fail *silently*:
+     *
+     *  - `new MMKV(...)` is gone. `MMKV` is now a **type-only** export, so it is
+     *    `undefined` at runtime and a `typeof mod.MMKV !== 'function'` guard is
+     *    always true. The instance is built by `createMMKV()` instead.
+     *  - `delete(key)` is now `remove(key)`.
+     *
+     * Because the guard simply returned null, MMKV never loaded on *any* native
+     * build and every player silently ran on the AsyncStorage fallback — which
+     * works, so nothing ever surfaced it except the backend line in Settings.
+     */
+    if (typeof mod?.createMMKV !== 'function') return null;
+    const instance = mod.createMMKV({ id: 'pulse-blocks' });
+
+    const store: KeyValue = {
+      getString: (key) => instance.getString(key),
+      set: (key, value) => instance.set(key, value),
+      delete: (key) => {
+        instance.remove(key);
+      },
     };
-    if (typeof mod?.MMKV !== 'function') return null;
-    const instance = new mod.MMKV({ id: 'pulse-blocks' });
+
     // Prove it actually works before committing to it.
-    instance.set('__probe', '1');
-    instance.delete('__probe');
-    return instance;
+    store.set('__probe', '1');
+    store.delete('__probe');
+    return store;
   } catch {
     return null;
   }
+}
+
+/** Set once the AsyncStorage profile has been copied into MMKV. */
+const MIGRATED_KEY = 'pb.storage.mmkvMigrated';
+
+/**
+ * One-time move of an existing profile from AsyncStorage into MMKV.
+ *
+ * MMKV never actually loaded before (see `tryLoadMmkv`), so every existing
+ * player's high scores, coins and saved run are sitting in AsyncStorage.
+ * Selecting MMKV without bringing them across would read an empty store, which
+ * is indistinguishable from a wiped profile. The marker means this costs one
+ * `multiGet` once, ever.
+ */
+async function migrateAsyncStorageInto(store: KeyValue): Promise<void> {
+  if (store.getString(MIGRATED_KEY) != null) return;
+  try {
+    const entries = await AsyncStorage.multiGet(MIRRORED_KEYS);
+    for (const [key, value] of entries) {
+      // Never overwrite something MMKV already holds — it is the newer write.
+      if (typeof value === 'string' && store.getString(key) == null) {
+        store.set(key, value);
+      }
+    }
+  } catch {
+    // An unreadable AsyncStorage is no reason to refuse the faster backend.
+  }
+  store.set(MIGRATED_KEY, '1');
 }
 
 export function registerPersistedKey(key: string): void {
@@ -83,6 +138,7 @@ export async function hydrateStorage(): Promise<void> {
   mmkv = tryLoadMmkv();
   if (mmkv) {
     backend = 'mmkv';
+    await migrateAsyncStorageInto(mmkv);
     return;
   }
 
