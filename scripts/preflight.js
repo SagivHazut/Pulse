@@ -100,6 +100,18 @@ if (literalMatch) {
 
 // ------------------------------------------------------------------- ad setup
 
+if (admob.forceEeaConsent === true) {
+  // Also __DEV__-gated, so a release build ignores it — but it means the last
+  // person to touch consent was testing the European form, not the real
+  // geography, and nobody has seen how the app behaves outside the EEA.
+  warn(
+    'forceEeaConsent is enabled',
+    'UMP is being told every device is in the EEA. Fine while testing the ' +
+      'consent form; set it to false so the non-EEA path gets exercised too.',
+  );
+}
+
+
 if (admob.forceTestUnits === true) {
   // Harmless in a release build (it is gated on __DEV__) but it means nobody has
   // actually exercised the live units, which is the point of the check.

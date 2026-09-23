@@ -73,7 +73,8 @@
         "androidAppId": "ca-app-pub-8814533566660025~5320161274",
         "androidRewardedUnitId": "ca-app-pub-8814533566660025/8907414465",
         "androidInterstitialUnitId": "",
-        "forceTestUnits": false
+        "forceTestUnits": false,
+        "forceEeaConsent": true
       },
       "legal": {
         "privacy": "https://sagivhazut.github.io/Pulse/privacy.html",

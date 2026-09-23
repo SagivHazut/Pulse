@@ -1,3 +1,4 @@
+import Constants from 'expo-constants';
 import { Platform } from 'react-native';
 
 import { track } from '../analytics';
@@ -59,12 +60,53 @@ type ConsentInfo = {
   status?: string;
 };
 
+/** Only the slice of `AdsConsentInfoOptions` this app has a use for. */
+type ConsentOptions = { debugGeography?: number };
+
 type AdsConsentApi = {
-  gatherConsent?: () => Promise<ConsentInfo>;
+  gatherConsent?: (options?: ConsentOptions) => Promise<ConsentInfo>;
   getConsentInfo?: () => Promise<ConsentInfo>;
   showPrivacyOptionsForm?: () => Promise<ConsentInfo>;
   getPurposeConsents?: () => Promise<string>;
+  reset?: () => void;
 };
+
+/** `AdsConsentDebugGeography.EEA`. Inlined so the SDK is not imported eagerly. */
+const DEBUG_GEOGRAPHY_EEA = 1;
+
+/**
+ * Pretend this device is in the EEA, so the consent form can be seen at all.
+ *
+ * UMP only shows a message to users it geolocates inside the EEA, the UK or
+ * Switzerland. Developing anywhere else means the consent path — the one that
+ * gates European ad revenue, and the only one with a legal requirement attached
+ * — can never be exercised, so a broken or unpublished message looks exactly
+ * like a correctly configured one.
+ *
+ * Set `expo.extra.admob.forceEeaConsent` to true and rebuild. Honoured only in
+ * development: gated on `__DEV__` exactly like `forceTestUnits`, so leaving the
+ * flag in config cannot change what a release build does.
+ */
+function consentOptions(): ConsentOptions | undefined {
+  if (!__DEV__) return undefined;
+  const admob = Constants.expoConfig?.extra?.admob as Record<string, unknown> | undefined;
+  if (admob?.forceEeaConsent !== true) return undefined;
+  console.warn('[ads] forceEeaConsent is on — UMP is being told this device is in the EEA.');
+  return { debugGeography: DEBUG_GEOGRAPHY_EEA };
+}
+
+/**
+ * Clear the stored consent decision so the form can be shown again.
+ *
+ * Development only. Without it the form appears exactly once per install and
+ * every later test run silently reuses the first answer.
+ */
+export function resetConsentForTesting(): void {
+  if (!__DEV__) return;
+  loadAdsConsent()?.reset?.();
+  state = { ...INITIAL };
+  inFlight = null;
+}
 
 function loadAdsConsent(): AdsConsentApi | null {
   // Probe first — see native.ts. Importing the SDK without its native module
@@ -144,7 +186,7 @@ export async function ensureConsentForAds(): Promise<ConsentState> {
     if (consent?.gatherConsent) {
       try {
         // gatherConsent = requestInfoUpdate + show-the-form-if-required.
-        applyInfo(await consent.gatherConsent());
+        applyInfo(await consent.gatherConsent(consentOptions()));
         state.personalized = await readPersonalisation(consent);
       } catch {
         // A form that will not load must not cost the player their reward.
