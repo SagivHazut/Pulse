@@ -19,14 +19,15 @@ Then press `i` for the iOS simulator, `a` for Android, or `w` for the browser. E
 | --- | --- |
 | `npm start` | Expo dev server |
 | `npm run ios` / `npm run android` / `npm run web` | Start on a specific platform |
-| `npm test` | Jest unit tests (212 tests: engine, persistence, drag math, economy, modes, ad pacing, consent rules, board layout) |
+| `npm test` | Jest unit tests (237 tests: engine, persistence, drag math, economy, modes, ad pacing, consent rules, board layout) |
 | `npm run test:coverage` | Tests with a coverage report |
 | `npm run typecheck` | `tsc --noEmit`, strict mode |
 | `npm run lint` | ESLint (expo config + React Compiler rules) |
 | `npm run audio` | Regenerate every sound file from source |
+| `npm run icons` | Regenerate every launch icon from the theme |
 | `npm run prebuild:clean` | Regenerate `ios/` and `android/` |
 | `npm run preflight` | Pre-launch checks — run before every store submission |
-| `npm run legal` | Render `legal/*.md` into `docs/` for GitHub Pages |
+| `npm run legal` | Render the privacy policy into `docs/` (hosted) and `src/constants/legalContent.ts` (in-app) |
 
 ---
 
@@ -341,7 +342,7 @@ all, so retention *is* the revenue strategy. Everything below follows from that.
 
 - **Rewarded ads carry the income.** Four placements, all opt-in, all at moments
   the player already wants something: revive, double coins, a free power-up, and
-  the daily doubler. Revives are capped at 2 per run — the main rewarded lever.
+  the daily doubler. Revives are capped at 1 per run — the main rewarded lever.
 - **Interstitials are kept deliberately rare.** They are the only ad the player
   does not choose, so they are the only one that can cost retention. Nothing is
   shown for the first 5 completed games, then roughly every 3–5 games with a
@@ -362,9 +363,9 @@ buy it still want the revive.
 | --- | --- |
 | Rewarded revive | Opt-in only, `MAX_REVIVES_PER_RUN = 1` |
 | Double coins | Offered once after a run, opt-in |
-| Rescue power-up | Once per app session, only when the toolbar is empty |
+| Rescue power-up | Once per app session, charged only when the reward is actually granted |
 | Daily reward doubler | Opt-in |
-| Interstitial | Never in the first 2 games, then every 3–5 games, with a 3-minute cooldown |
+| Interstitial | Never in the first 5 completed games, then every 3–5 games, with a 3-minute cooldown |
 
 Interstitials never appear during gameplay, during a drag, during an animation, immediately after a rewarded ad, or during onboarding.
 
@@ -388,7 +389,7 @@ Tracked: `app_open`, `game_started`, `game_finished`, `game_resumed`, `line_clea
 npm test
 ```
 
-156 tests on plain Node via ts-jest — no native runtime, no Metro transform:
+237 tests on plain Node via ts-jest — no native runtime, no Metro transform:
 
 - placement, bounds, overlap, and the rainbow wildcard
 - line detection, multi-line clears, power cascades, perfect clears
@@ -444,13 +445,13 @@ Ordered by what blocks what. Everything in **Code** is done; the rest needs your
 - [x] ad frequency caps, cooldowns and the new-player grace period
 - [x] UMP consent + ATT plumbing, deferred to the first ad rather than launch
 - [x] unit IDs read from app config, with a visible warning on test units
-- [x] 143 tests, strict typecheck, clean lint
+- [x] 237 tests, strict typecheck, clean lint
 
 **Yours — identity and legal**
 
 - [ ] replace `com.example.pulseblocks` in `app.json` with your real bundle ID and package name
-- [ ] replace the placeholder URLs in `src/constants/app.ts` with a live privacy policy and terms
-- [ ] replace the placeholder icons and splash art in `assets/`
+- [ ] publish `docs/` to GitHub Pages so the privacy policy URL in `app.json` resolves
+- [x] launch icons and splash art (`npm run icons`, drawn from the theme)
 - [ ] host `app-ads.txt` on the domain in your store listing
 
 **Yours — ads**
