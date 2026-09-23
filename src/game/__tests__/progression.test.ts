@@ -80,6 +80,9 @@ describe('daily reward', () => {
     expect(state.day).toBe(4);
   });
 
+  // The returned streak is what the UI must show. The stored `currentStreak`
+  // passed in here is still 5 and stays 5 until a claim rewrites it, so a sheet
+  // reading the stored value advertises a streak the player has already lost.
   it('resets the streak after a missed day', () => {
     const state = evaluateDaily('2026-08-01', 5, new Date('2026-08-08T09:00:00'));
     expect(state.streak).toBe(0);

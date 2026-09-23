@@ -36,7 +36,9 @@ export function DailyRewardSheet({ visible, onClose }: Props) {
   const theme = useTheme();
   const dailyState = usePlayerStore((s) => s.dailyState);
   const claimDaily = usePlayerStore((s) => s.claimDaily);
-  const streak = usePlayerStore((s) => s.currentStreak);
+  // The streak *after* the claim lands — the reveal is shown once `claimDaily`
+  // has already written it, so this is the number the player just earned.
+  const claimedStreak = usePlayerStore((s) => s.currentStreak);
   const setAdInFlight = useMonetizationStore((s) => s.setAdInFlight);
   const reducedMotion = useSettingsStore((s) => s.reducedMotion);
 
@@ -138,7 +140,7 @@ export function DailyRewardSheet({ visible, onClose }: Props) {
         </View>
 
         <Text style={[styles.revealStreak, { color: theme.colors.textMuted }]}>
-          {streak} day streak · come back tomorrow
+          {claimedStreak} day streak · come back tomorrow
         </Text>
 
         <Button label="NICE" fullWidth onPress={handleClose} />
@@ -148,8 +150,15 @@ export function DailyRewardSheet({ visible, onClose }: Props) {
 
   return (
     <Sheet visible={visible} onClose={handleClose} title="Daily Reward">
+      {/*
+        `state.streak`, not the stored `currentStreak`. They diverge the moment a
+        day is missed: the stored value still reads 5 while `evaluateDaily` has
+        already reset the cycle to day 1, so the sheet advertised a streak the
+        player had just lost, beside a 50-coin day-1 reward. The evaluated value
+        is the one the reward is actually computed from.
+      */}
       <Text style={[styles.streak, { color: theme.colors.textMuted }]}>
-        {streak > 0 ? `${streak} day streak` : 'Come back daily for bigger rewards'}
+        {state.streak > 0 ? `${state.streak} day streak` : 'Come back daily for bigger rewards'}
       </Text>
 
       <View style={styles.grid}>

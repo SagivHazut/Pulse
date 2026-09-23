@@ -1,8 +1,16 @@
 import Constants from 'expo-constants';
+import { LogBox } from 'react-native';
 
-import { GAME_CONFIG, SAVE_VERSION, STORAGE_KEYS } from '../../constants/config';
-import { SHAPES } from '../../game/pieces/shapes';
-import type { BlockColorId, Board, PlayerData, Piece, SavedSession } from '../../types';
+import { dayKey } from '../../game/dailyReward';
+
+import { SAVE_VERSION, STORAGE_KEYS } from '../../constants/config';
+import type { PlayerData, SavedSession } from '../../types';
+import {
+  assertBoardIsPlausible,
+  assertPayoffIsReachable,
+  demoBoard,
+  demoTray,
+} from './demoFixture';
 import { patchPlayerData } from './playerData';
 import { saveSession } from './session';
 
@@ -45,6 +53,12 @@ const DEMO_PROFILE: Partial<PlayerData> = {
   unlockedFinishes: ['gloss', 'flat', 'bevel'],
   selectedFinish: 'gloss',
   currentStreak: 5,
+  // Claimed yesterday, so the streak is live rather than already broken. Without
+  // this the sheet offers day 1 for 50 coins — truthfully, since a null last
+  // claim means no streak at all — which is a poor advert for a seven-day
+  // ladder. Computed at call time because "yesterday" has to be relative to
+  // whenever the captures are taken.
+  lastDailyReward: dayKey(new Date(Date.now() - 86_400_000)),
   tutorialCompleted: true,
   unlockedAchievements: [
     'first_clear',
@@ -57,107 +71,6 @@ const DEMO_PROFILE: Partial<PlayerData> = {
   ],
 };
 
-/**
- * A board worth photographing.
- *
- * Authored as ASCII for the same reason the piece shapes are — it is the only
- * way to see the composition while editing it. Each letter is a block colour;
- * '.' is empty.
- *
- * Shaped deliberately: dense along the bottom and left so the grid reads as
- * "a run in progress" rather than a random scatter, with the lower rows one tile
- * short of clearing. A board about to pay off sells the mechanic; a half-empty
- * one sells nothing.
- *
- * **No row or column may be complete.** A full line clears the instant it forms,
- * so a seeded board containing one is a state the game could never produce —
- * and it is exactly the kind of detail that makes a store screenshot look
- * staged. `demoBoardIsPlausible` below asserts it rather than trusting the art.
- */
-const DEMO_BOARD = [
-  '........',
-  '........',
-  '...vv...',
-  '..avvc..',
-  '..aaccs.',
-  'lla.ccsp',
-  'llaar.sp',
-  'llmmrrp.',
-];
-
-const COLOR_BY_LETTER: Record<string, BlockColorId> = {
-  a: 'aqua',
-  v: 'violet',
-  c: 'coral',
-  l: 'lime',
-  m: 'amber',
-  r: 'rose',
-  s: 'sky',
-  p: 'violet',
-};
-
-/**
- * Would the engine ever allow this board to exist?
- *
- * Only the completeness rule is checked, because it is the only one a hand-drawn
- * board can plausibly break. Throwing in development is the point: a silently
- * impossible board ships to a store listing, where it is someone else's job to
- * notice.
- */
-function assertBoardIsPlausible(board: Board): void {
-  if (!__DEV__) return;
-  const rows = board.length;
-  const cols = board[0]?.length ?? 0;
-
-  for (let row = 0; row < rows; row += 1) {
-    if (board[row]?.every((cell) => cell !== null)) {
-      throw new Error(`demoSeed: row ${row} is complete — it would have cleared.`);
-    }
-  }
-  for (let col = 0; col < cols; col += 1) {
-    if (board.every((line) => line[col] !== null)) {
-      throw new Error(`demoSeed: column ${col} is complete — it would have cleared.`);
-    }
-  }
-}
-
-function demoBoard(): Board {
-  return Array.from({ length: GAME_CONFIG.rows }, (_, row) =>
-    Array.from({ length: GAME_CONFIG.columns }, (_, col) => {
-      const letter = DEMO_BOARD[row]?.[col] ?? '.';
-      const colorId = COLOR_BY_LETTER[letter];
-      return colorId ? { colorId, power: null } : null;
-    }),
-  );
-}
-
-/** A full hand, so the tray never photographs half-empty. */
-function demoTray(): (Piece | null)[] {
-  const wanted: { shapeId: string; colorId: BlockColorId; power?: 'bomb' }[] = [
-    // Completes row 5 — the payoff the board is set up for.
-    { shapeId: 'i2-h', colorId: 'aqua' },
-    // A bomb tile, so the power-block mechanic is visible in the shot.
-    { shapeId: 't-down', colorId: 'rose', power: 'bomb' },
-    { shapeId: 'l-b', colorId: 'sky' },
-  ];
-
-  return wanted.map((want, index) => {
-    const shape = SHAPES.find((candidate) => candidate.id === want.shapeId);
-    if (!shape) return null;
-    return {
-      id: `demo-${index}`,
-      shapeId: shape.id,
-      cells: shape.cells.map((cell, i) => ({
-        r: cell.r,
-        c: cell.c,
-        power: want.power && i === 1 ? want.power : null,
-      })),
-      width: shape.width,
-      height: shape.height,
-      colorId: want.colorId,
-    };
-  });
-}
 
 /**
  * A run already underway, so the game screen has something to show.
@@ -202,11 +115,24 @@ export function demoSeedEnabled(): boolean {
  */
 export function applyDemoSeed(): void {
   if (!demoSeedEnabled()) return;
+
+  // The LogBox banner sits across the bottom of the screen and covers the tab
+  // bar. It is not wrong to show it — the ads layer really does warn, loudly,
+  // while the AdMob account is still pending approval — but this build exists
+  // solely to be photographed, and a dev overlay in a store screenshot is worse
+  // than a missed warning. Release builds have no LogBox at all, and the same
+  // warnings still reach the Metro console.
+  LogBox.ignoreAllLogs(true);
+
   const session = demoSession();
   assertBoardIsPlausible(session.board);
+  assertPayoffIsReachable(session.board, session.tray);
   patchPlayerData(DEMO_PROFILE);
   saveSession(session);
-  console.warn(
+  // Deliberately `log`, not `warn`: a warning raises the LogBox banner, which
+  // sits across the bottom of the screen and photobombs the very screenshots
+  // this seed exists to make possible.
+  console.log(
     `[demo] Seeded a demo profile into ${STORAGE_KEYS.player}. ` +
       'Set expo.extra.demoSeed to false and reinstall to get a real save back.',
   );
