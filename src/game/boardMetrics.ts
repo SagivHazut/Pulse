@@ -22,11 +22,74 @@ export const MAX_BOARD_WIDTH = 520;
  * Because the board is centred inside a flex parent, an oversized board does not
  * clip — it overflows *upwards* and paints over the score, which on a 320x640
  * device sliced the "BEST" line in half.
+ *
+ * Raise this whenever chrome is added above or below the board. It last moved
+ * from 396 when the score block gained a bottom margin — without the bump the
+ * board would have reclaimed exactly the gap that margin was added to create.
  */
-export const CHROME_HEIGHT = 396;
+export const CHROME_HEIGHT = 420;
 
 /** Below this the grid stops being playable, so overflow is the lesser evil. */
 export const MIN_BOARD_SIZE = 220;
+
+/**
+ * Height the inline tutorial card is budgeted at.
+ *
+ * Measured at 115dp, plus the one extra `styles.lower` flex gap that mounting it
+ * also costs (SPACING.sm = 12), rounded up so the longest step ("Chain it",
+ * whose body wraps to a second line) still fits.
+ *
+ * This is a **constant on purpose**, and it is what the card reports rather than
+ * its own measured height — see `canReserveHeight` and `tutorialReserve`. The
+ * card's text changes length from step to step, so a measured reservation would
+ * resize the board mid-run, under the player's hand, at the exact moment a clear
+ * animation is playing.
+ */
+export const TUTORIAL_CARD_HEIGHT = 132;
+
+/**
+ * Whether a transient panel of `panelHeight` can be given its own space without
+ * pushing the board below the playable floor.
+ *
+ * On a 320x640 device the chrome and a playable board already account for the
+ * whole screen, so a ~110dp tutorial card cannot be laid out beside them: the
+ * choice is a covered board or a board with 15dp cells. The caller uses this to
+ * pick — reserve space where it fits, overlay where it does not, and never let
+ * the panel squeeze the column and push the board over the score.
+ *
+ * **`panelHeight` must be a constant, never a measured height.** The panel is
+ * laid out differently depending on the answer — a tall card inline, a short
+ * pill floating — so feeding its measured height back in closes a loop:
+ *
+ *     measure tall card (132) -> "no room" -> render short pill
+ *     measure short pill (43) -> "room!"   -> render tall card -> ...
+ *
+ * That oscillates once per frame for every screen between
+ * `CHROME_HEIGHT + MIN_BOARD_SIZE + pillHeight` and
+ * `CHROME_HEIGHT + MIN_BOARD_SIZE + cardHeight` — 683dp to 771dp, i.e. most
+ * budget Android phones (360x720, 360x740, 412x732), during the tutorial that
+ * every new player sees. Measured live at 360x720: 39 flips in 40 frames.
+ *
+ * Callers should prefer `tutorialReserve`, which cannot be passed the wrong
+ * thing.
+ */
+export function canReserveHeight(height: number, panelHeight: number): boolean {
+  return height - CHROME_HEIGHT - panelHeight >= MIN_BOARD_SIZE;
+}
+
+/**
+ * How much height the board gives up for the tutorial card: all of it, or none.
+ *
+ * The whole decision is a pure function of the viewport and one boolean, so the
+ * reserve decision, the reserved amount and the card's own layout cannot
+ * disagree with each other. Reserving exactly what `canReserveHeight` was asked
+ * about is the point — reserving a *measured* height that differs from the
+ * budgeted one is how the board ends up overflowing the score.
+ */
+export function tutorialReserve(height: number, cardVisible: boolean): number {
+  if (!cardVisible) return 0;
+  return canReserveHeight(height, TUTORIAL_CARD_HEIGHT) ? TUTORIAL_CARD_HEIGHT : 0;
+}
 
 export type BoardMetrics = {
   boardSize: number;
@@ -50,6 +113,12 @@ export function computeBoardMetricsWith(
   width: number,
   height: number,
   round: RoundFn,
+  /**
+   * Extra height claimed by something transient, currently the tutorial card.
+   * Passing it here shrinks the board instead of letting the card overlap it —
+   * the card exists to point at the board, so covering it defeats the purpose.
+   */
+  reserved = 0,
 ): BoardMetrics {
   const isTablet = Math.min(width, height) >= 600;
   const horizontalInset = isTablet ? SPACING.xl : SPACING.md;
@@ -57,7 +126,7 @@ export function computeBoardMetricsWith(
   const available = Math.min(width - horizontalInset * 2, MAX_BOARD_WIDTH);
   // What is genuinely left once the surrounding chrome has taken its share. On
   // roomy screens the width limit still wins, so this only bites where it must.
-  const heightBudget = height - CHROME_HEIGHT;
+  const heightBudget = height - CHROME_HEIGHT - Math.max(0, reserved);
   const boardSize = round(Math.max(MIN_BOARD_SIZE, Math.min(available, heightBudget)));
 
   const inner = boardSize - BOARD_PADDING * 2 - CELL_GAP * (GAME_CONFIG.columns - 1);

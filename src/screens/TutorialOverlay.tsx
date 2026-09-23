@@ -28,7 +28,25 @@ const STEPS: Step[] = [
  * is telling you to look at. Steps advance on real actions, not scripted taps,
  * so the "tutorial" *is* the first run.
  */
-export function TutorialOverlay() {
+type Props = {
+  /**
+   * Reports whether the card is on screen, so the board can be sized around it.
+   *
+   * Deliberately a boolean rather than a measured height: the card's body text
+   * changes length from step to step, so reporting what it measures would resize
+   * the board mid-run. `tutorialReserve` budgets a constant instead.
+   */
+  onVisibleChange?: (visible: boolean) => void;
+  /**
+   * Float over the board instead of taking space in the column. Set only where
+   * the screen is too short to fit both the card and a playable board — see
+   * `canReserveHeight`. Taking space is the default because a card that covers
+   * the board contradicts what it is telling the player to do.
+   */
+  overlay?: boolean;
+};
+
+export function TutorialOverlay({ onVisibleChange, overlay = false }: Props) {
   const theme = useTheme();
 
   const completed = usePlayerStore((s) => s.tutorialCompleted);
@@ -58,53 +76,107 @@ export function TutorialOverlay() {
     if (combo >= 2 || linesCleared >= 3) completeTutorial();
   }, [combo, completed, dismissed, linesCleared, completeTutorial]);
 
-  if (completed || dismissed || status === 'gameover') return null;
-
+  const visible = !completed && !dismissed && status !== 'gameover';
   const current = STEPS[Math.min(step, STEPS.length - 1)];
 
+  /**
+   * The card only costs the board space when it is both on screen and inline;
+   * the floating form overlaps the board rather than displacing it. Reported
+   * from an effect rather than `onLayout` so an unmounted card still hands its
+   * space back.
+   */
+  useEffect(() => {
+    onVisibleChange?.(visible && !overlay);
+  }, [visible, overlay, onVisibleChange]);
+
+  if (!visible) return null;
+
+  const skip = (
+    <PressableScale
+      onPress={() => {
+        setDismissed(true);
+        completeTutorial();
+      }}
+      sound={false}
+      style={overlay ? styles.compactSkip : styles.skip}
+      accessibilityLabel="Skip tutorial"
+    >
+      <Text style={{ color: theme.colors.textMuted, fontSize: FONT_SIZE.micro }}>SKIP</Text>
+    </PressableScale>
+  );
+
+  const surface = {
+    backgroundColor: theme.colors.surfaceElevated,
+    borderColor: theme.colors.accent,
+  };
+
   return (
-    <FadeInView pointerEvents="box-none" style={styles.wrap}>
-      <View
-        style={[
-          styles.card,
-          ELEVATION.card,
-          { backgroundColor: theme.colors.surfaceElevated, borderColor: theme.colors.accent },
-        ]}
-      >
-        <View style={styles.dots}>
-          {STEPS.map((_, index) => (
-            <View
-              key={index}
-              style={[
-                styles.dot,
-                {
-                  backgroundColor:
-                    index <= step ? theme.colors.accent : theme.colors.surfaceSecondary,
-                },
-              ]}
-            />
-          ))}
-        </View>
-        <Text style={[styles.title, { color: theme.colors.textPrimary }]}>{current.title}</Text>
-        <Text style={[styles.body, { color: theme.colors.textSecondary }]}>{current.body}</Text>
-        <PressableScale
-          onPress={() => {
-            setDismissed(true);
-            completeTutorial();
-          }}
-          sound={false}
-          style={styles.skip}
-          accessibilityLabel="Skip tutorial"
-        >
-          <Text style={{ color: theme.colors.textMuted, fontSize: FONT_SIZE.micro }}>SKIP</Text>
-        </PressableScale>
-      </View>
-    </FadeInView>
+    <View style={overlay ? styles.floating : styles.wrap} pointerEvents="box-none">
+      <FadeInView pointerEvents="box-none" style={styles.fade}>
+        {overlay ? (
+          /*
+            Compact form for screens with no room to spare. It still has to float
+            over the board, so it earns its keep by being one line instead of four
+            — covering the bottom row rather than half the grid. The step title is
+            the instruction; the body text is the part that can go.
+          */
+          <View style={[styles.compact, ELEVATION.card, surface]}>
+            <Text style={[styles.compactTitle, { color: theme.colors.textPrimary }]}>
+              {current.title}
+            </Text>
+            {skip}
+          </View>
+        ) : (
+          <View style={[styles.card, ELEVATION.card, surface]}>
+            <View style={styles.dots}>
+              {STEPS.map((_, index) => (
+                <View
+                  key={index}
+                  style={[
+                    styles.dot,
+                    {
+                      backgroundColor:
+                        index <= step ? theme.colors.accent : theme.colors.surfaceSecondary,
+                    },
+                  ]}
+                />
+              ))}
+            </View>
+            <Text style={[styles.title, { color: theme.colors.textPrimary }]}>
+              {current.title}
+            </Text>
+            <Text style={[styles.body, { color: theme.colors.textSecondary }]}>
+              {current.body}
+            </Text>
+            {skip}
+          </View>
+        )}
+      </FadeInView>
+    </View>
   );
 }
 
 const styles = StyleSheet.create({
-  wrap: { alignSelf: 'stretch', alignItems: 'center' },
+  // The small top gap keeps the card from sitting flush against the board's
+  // bottom edge, which read as the two overlapping rather than stacking.
+  wrap: { alignSelf: 'stretch', alignItems: 'center', paddingTop: SPACING.xs },
+  /** The inner layer must not repeat the wrapper's padding — that double-counted
+   *  against the height the wrapper reports. */
+  fade: { alignSelf: 'stretch', alignItems: 'center' },
+  /**
+   * Short-screen fallback: sits directly above the lower section, overlapping the
+   * board's last rows. Reports a height of 0 by virtue of being out of flow, so
+   * the board keeps its full (already minimal) size rather than being squeezed
+   * until it overflows the score.
+   */
+  floating: {
+    position: 'absolute',
+    bottom: '100%',
+    left: 0,
+    right: 0,
+    alignItems: 'center',
+    paddingBottom: SPACING.xs,
+  },
   card: {
     maxWidth: 320,
     borderRadius: RADIUS.lg,
@@ -114,6 +186,18 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     gap: 3,
   },
+  compact: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: SPACING.sm,
+    maxWidth: 320,
+    borderRadius: RADIUS.pill,
+    borderWidth: 1.5,
+    paddingHorizontal: SPACING.md,
+    paddingVertical: 6,
+  },
+  compactTitle: { fontSize: FONT_SIZE.caption, fontWeight: FONT_WEIGHT.heavy },
+  compactSkip: { minHeight: 20, justifyContent: 'center' },
   dots: { flexDirection: 'row', gap: 5, marginBottom: 3 },
   dot: { width: 16, height: 3, borderRadius: 2 },
   title: { fontSize: FONT_SIZE.body, fontWeight: FONT_WEIGHT.heavy },

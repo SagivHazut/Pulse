@@ -158,7 +158,12 @@ const styles = StyleSheet.create({
     borderRadius: RADIUS.pill,
     borderWidth: 1,
   },
-  scoreBlock: { alignItems: 'center', marginTop: SPACING.xs },
+  /**
+   * The bottom gap is load-bearing. The board is centred in a `flex: 1` parent
+   * directly below, so with nothing reserved here it drifts up until "BEST" is
+   * almost touching the grid — which read as a layout bug on both platforms.
+   */
+  scoreBlock: { alignItems: 'center', marginTop: SPACING.xs, marginBottom: SPACING.md },
   score: {
     fontSize: FONT_SIZE.display,
     fontWeight: FONT_WEIGHT.heavy,

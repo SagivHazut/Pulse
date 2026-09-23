@@ -1,5 +1,5 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { StyleSheet, useWindowDimensions, View } from 'react-native';
+import { Platform, StyleSheet, useWindowDimensions, View } from 'react-native';
 import Animated, {
   useAnimatedStyle,
   useSharedValue,
@@ -34,7 +34,12 @@ import { useSettingsStore } from '../stores/useSettingsStore';
 import { showToast } from '../stores/useUiStore';
 import { SPACING } from '../theme/tokens';
 import type { Coord, Piece, PowerUpKind } from '../types';
-import { computeBoardMetrics } from '../utils/layout';
+import {
+  TUTORIAL_CARD_HEIGHT,
+  canReserveHeight,
+  computeBoardMetrics,
+  tutorialReserve,
+} from '../utils/layout';
 import { GameOverSheet } from './GameOverSheet';
 import { TutorialOverlay } from './TutorialOverlay';
 
@@ -51,7 +56,26 @@ export function GameScreen() {
   const { width, height } = useWindowDimensions();
   const go = useRouterStore((s) => s.go);
 
-  const metrics = useMemo(() => computeBoardMetrics(width, height), [width, height]);
+  /**
+   * Whether the tutorial card is on screen at all. The board is sized around it
+   * rather than covered by it, and the space is handed straight back when it
+   * goes — but the *amount* is a constant, never a measurement. See
+   * `tutorialReserve`.
+   */
+  const [tutorialVisible, setTutorialVisible] = useState(false);
+
+  /**
+   * Very short screens cannot fit the card *and* a playable board, so there it
+   * floats over the board's lower rows instead of taking space from it. Anywhere
+   * with room, the board shrinks and the card sits clear of it — which is the
+   * point of a card that says "drag a piece onto the board".
+   */
+  const reserveTutorialSpace = canReserveHeight(height, TUTORIAL_CARD_HEIGHT);
+
+  const metrics = useMemo(
+    () => computeBoardMetrics(width, height, tutorialReserve(height, tutorialVisible)),
+    [width, height, tutorialVisible],
+  );
 
   const board = useGameStore((s) => s.board);
   const tray = useGameStore((s) => s.tray);
@@ -292,10 +316,20 @@ export function GameScreen() {
   const handleRescue = useCallback(async () => {
     if (shopBusy) return;
     setShopBusy(true);
-    registerRescueOffer();
     setAdInFlight(true);
     const kind: PowerUpKind = Math.random() < 0.5 ? 'bomb' : 'lightning';
-    const result = await showRewarded('rescue_powerup', () => grantPowerUp(kind));
+    /**
+     * The offer is spent inside the reward callback, not before the request.
+     * `showRewarded` returns 'unavailable' without presenting anything when
+     * there is no fill, no consent, or the null provider is live — and this is
+     * the only rescue offer of the session, so charging for it up front left the
+     * button permanently disabled having granted nothing. Matches GameOverSheet,
+     * and `showRewarded`'s own idempotency guard keeps it to once per ad.
+     */
+    const result = await showRewarded('rescue_powerup', () => {
+      registerRescueOffer();
+      grantPowerUp(kind);
+    });
     setAdInFlight(false);
     setShopBusy(false);
     if (result.earned) showToast(`${kind === 'bomb' ? 'Bomb' : 'Bolt'} added!`, 'success');
@@ -318,7 +352,21 @@ export function GameScreen() {
   }, []);
 
   const modeConfig = getMode(mode);
-  const boardTop = insets.top + (metrics.isCompact ? 84 : 104);
+
+  /**
+   * Where the board actually sits, measured rather than estimated.
+   *
+   * This was `insets.top + (isCompact ? 84 : 104)` — a hard-coded guess at the
+   * header height that went stale every time the chrome above the board changed,
+   * and silently, because nothing references it. `gridRef` measures the *inner*
+   * grid, so step back out by the board padding to get the board's own top. The
+   * old estimate survives only as the pre-measurement fallback, so the badge
+   * cannot anchor at the top of the screen on the first frame.
+   */
+  const boardTop =
+    boardWindow.y > 0
+      ? boardWindow.y - rootWindow.y - metrics.padding
+      : insets.top + (metrics.isCompact ? 84 : 104);
 
   return (
     <View
@@ -333,7 +381,18 @@ export function GameScreen() {
         <View
           style={[
             styles.content,
-            { paddingTop: insets.top + SPACING.xs, paddingBottom: Math.max(insets.bottom, SPACING.md) },
+            {
+              /**
+               * Android needs a bigger gap than iOS, not the same one.
+               *
+               * On iOS the safe-area inset covers the notch and already carries
+               * slack below it. On Android it is just the status-bar strip — about
+               * 24dp with no breathing room — so the same additive padding leaves
+               * the back button crowded right under the clock.
+               */
+              paddingTop: insets.top + (Platform.OS === 'android' ? SPACING.md : SPACING.xs),
+              paddingBottom: Math.max(insets.bottom, SPACING.md),
+            },
           ]}
           pointerEvents="box-none"
         >
@@ -366,7 +425,7 @@ export function GameScreen() {
           </Animated.View>
 
           <View style={styles.lower}>
-            <TutorialOverlay />
+            <TutorialOverlay onVisibleChange={setTutorialVisible} overlay={!reserveTutorialSpace} />
             {/*
               Classic shows only the combo — no Pulse meter to fill and no
               toolbar to fill it for. The board gets the space instead.

@@ -42,10 +42,23 @@ export function IconButton({ glyph, onPress, label, size = 42, tone = 'default' 
         },
       ]}
     >
+      {/*
+        `includeFontPadding: false` is the fix, and it is Android-only.
+        Roboto reserves ascent/descent padding inside the line box, so centring
+        the Text centres that box rather than the glyph — an arrow, whose optical
+        mass sits high, ends up visibly above centre. Pinning lineHeight to the
+        font size removes the remaining slack so the glyph sits dead centre on
+        both platforms.
+      */}
       <Text
+        allowFontScaling={false}
         style={{
           color: isAccent ? theme.colors.accent : theme.colors.textSecondary,
           fontSize: FONT_SIZE.label,
+          lineHeight: FONT_SIZE.label,
+          includeFontPadding: false,
+          textAlign: 'center',
+          textAlignVertical: 'center',
         }}
       >
         {glyph}

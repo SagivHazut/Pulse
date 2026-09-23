@@ -16,11 +16,23 @@ export {
   CHROME_HEIGHT,
   MAX_BOARD_WIDTH,
   MIN_BOARD_SIZE,
+  TUTORIAL_CARD_HEIGHT,
+  canReserveHeight,
+  tutorialReserve,
   type BoardMetrics,
 } from '../game/boardMetrics';
 
-export function computeBoardMetrics(width: number, height: number): BoardMetrics {
-  return computeBoardMetricsWith(width, height, (v) => PixelRatio.roundToNearestPixel(v));
+export function computeBoardMetrics(
+  width: number,
+  height: number,
+  reserved = 0,
+): BoardMetrics {
+  return computeBoardMetricsWith(
+    width,
+    height,
+    (v) => PixelRatio.roundToNearestPixel(v),
+    reserved,
+  );
 }
 
 const initial = Dimensions.get('window');
