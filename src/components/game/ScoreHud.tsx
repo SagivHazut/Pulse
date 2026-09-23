@@ -9,6 +9,7 @@ import Animated, {
 } from 'react-native-reanimated';
 
 import { useTheme } from '../../hooks/useTheme';
+import { useAccessibilityAnnounce } from '../../utils/announce';
 import { GLYPH } from '../../theme/glyphs';
 import { FONT_SIZE, FONT_WEIGHT, RADIUS, SPACING } from '../../theme/tokens';
 import { IconButton } from '../ui/IconButton';
@@ -51,6 +52,9 @@ export function ScoreHud({
   const previous = useRef(score);
   const scoreRef = useRef<View>(null);
 
+  // The live region on the score covers Android; iOS ignores it entirely.
+  useAccessibilityAnnounce(`Score ${score}`);
+
   useEffect(() => {
     if (score === previous.current) return;
     const grew = score > previous.current;
@@ -89,6 +93,7 @@ export function ScoreHud({
             styles.coinPill,
             { backgroundColor: theme.colors.surface, borderColor: theme.colors.gridLine },
           ]}
+          accessible
           accessibilityLabel={`${coins} coins`}
         >
           <Text style={{ color: theme.colors.coin, fontSize: FONT_SIZE.caption }}>◉</Text>

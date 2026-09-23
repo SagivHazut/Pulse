@@ -3,6 +3,7 @@ import { StyleSheet, Text } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { useTheme } from '../../hooks/useTheme';
+import { useAccessibilityAnnounce } from '../../utils/announce';
 import { FadeInView } from './FadeInView';
 import { ELEVATION, FONT_SIZE, FONT_WEIGHT, RADIUS, SPACING } from '../../theme/tokens';
 
@@ -22,6 +23,9 @@ type Props = {
 export function Toast({ message, onDismiss, durationMs = 2400 }: Props) {
   const theme = useTheme();
   const insets = useSafeAreaInsets();
+
+  // The live region below covers Android; iOS ignores it entirely.
+  useAccessibilityAnnounce(message?.text);
 
   useEffect(() => {
     if (!message) return;
@@ -58,6 +62,7 @@ export function Toast({ message, onDismiss, durationMs = 2400 }: Props) {
         },
       ]}
     >
+      {/* The live region covers Android; iOS needs the explicit announcement. */}
       <Text
         accessibilityLiveRegion="polite"
         style={[styles.text, { color: theme.colors.textPrimary }]}

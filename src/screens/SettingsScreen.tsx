@@ -121,6 +121,10 @@ export function SettingsScreen() {
               return (
                 <View
                   key={achievement.id}
+                  // Without `accessible`, iOS never treats this as one element:
+                  // VoiceOver reads the glyph and the title separately and the
+                  // label describing the achievement is never spoken.
+                  accessible
                   accessibilityLabel={`${achievement.title}. ${achievement.description}. ${
                     owned ? 'Unlocked' : 'Locked'
                   }`}

@@ -7,6 +7,7 @@ import { Button } from '../components/ui/Button';
 import { Sheet } from '../components/ui/Sheet';
 import { DAILY_REWARD } from '../constants/config';
 import { useTheme } from '../hooks/useTheme';
+import { useAccessibilityAnnounce } from '../utils/announce';
 import { showRewarded } from '../services/ads';
 import { playSfx } from '../services/audio';
 import { haptics } from '../services/haptics';
@@ -43,6 +44,11 @@ export function DailyRewardSheet({ visible, onClose }: Props) {
   const [claimed, setClaimed] = useState<Claimed | null>(null);
   const closeTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const state = dailyState();
+
+  // The reveal's live region covers Android; iOS ignores it entirely.
+  useAccessibilityAnnounce(
+    claimed ? `${claimed.amount} coins claimed${claimed.doubled ? ', doubled' : ''}` : null,
+  );
 
   // Only cleanup — the timer is started from the claim handlers, not an effect.
   useEffect(
