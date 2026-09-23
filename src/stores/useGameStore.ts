@@ -1,6 +1,12 @@
 import { create } from 'zustand';
 
-import { ANIMATION, GAME_CONFIG, POWER_BLOCK_CONFIG, SAVE_VERSION } from '../constants/config';
+import {
+  ANIMATION,
+  GAME_CONFIG,
+  GENERATION_CONFIG,
+  POWER_BLOCK_CONFIG,
+  SAVE_VERSION,
+} from '../constants/config';
 import { createEmptyBoard, occupancy, toOccupancyGrid } from '../game/engine/board';
 import { isGameOver } from '../game/engine/placement';
 import { reviveBoard } from '../game/engine/revive';
@@ -248,6 +254,13 @@ export const useGameStore = create<GameState>((set, get) => ({
       runRewards: null,
       banked: EMPTY_BANKED_RUN,
     });
+    /**
+     * The per-run ad caps belong to the run, not to the screen that started it.
+     * Resetting them here covers NEW GAME from the game-over sheet, which used
+     * to leave `revivesUsedThisRun` at its old value — silently removing the
+     * revive offer, the largest rewarded placement, for the rest of the session.
+     */
+    useMonetizationStore.getState().beginRun();
     get().persist();
   },
 
@@ -283,8 +296,16 @@ export const useGameStore = create<GameState>((set, get) => ({
       lastAward: null,
       armedPowerUp: null,
       runRewards: null,
-      banked: EMPTY_BANKED_RUN,
+      /**
+       * A revived run is persisted while still in flight, so the save may
+       * already carry what it was paid. Zeroing it here would re-pay the whole
+       * run on the next game over.
+       */
+      banked: session.banked ?? EMPTY_BANKED_RUN,
     });
+    // Seeded from the save, so quitting and resuming cannot refill the revive
+    // budget of a run that has already spent it.
+    useMonetizationStore.getState().beginRun(session.revivesUsed);
   },
 
   /**
@@ -294,9 +315,12 @@ export const useGameStore = create<GameState>((set, get) => ({
    *   2. +clearTotalMs — cleared cells removed, hand refilled, game-over checked
    */
   placePieceAt(pieceId, row, col) {
-    // Land the previous turn first so a fast player is never blocked by an
-    // animation that is still playing.
-    if (get().status === 'clearing') flushPendingClear();
+    // Land the previous beat first so a fast player is never blocked by an
+    // animation that is still playing. Keyed on there *being* a pending beat,
+    // not on `status`: a power-up burst leaves the status at 'playing', so a
+    // status check missed it and this would then overwrite `clearTimer` without
+    // cancelling the timer it pointed at.
+    if (pendingSettle) flushPendingClear();
 
     const state = get();
     if (state.status !== 'playing') return false;
@@ -414,7 +438,13 @@ export const useGameStore = create<GameState>((set, get) => ({
 
       // Pulse meter completion pays out a free power-up — Pulse mode only.
       let powerUps = s.powerUps;
-      let award: PowerUpAwardEvent | null = s.lastAward;
+      /**
+       * A one-shot event, so it must not carry forward. Keeping the previous
+       * turn's award alive made it fire again on every remount of GameScreen —
+       * navigating to Settings and back announced "free power-up!" for a
+       * power-up that was granted minutes ago and is not granted again.
+       */
+      let award: PowerUpAwardEvent | null = null;
       if (result.pulseFull && getMode(s.mode).pulseMeter) {
         const kind = POWER_UP_KINDS[Math.floor(Math.random() * POWER_UP_KINDS.length)];
         powerUps = { ...powerUps, [kind]: powerUps[kind] + 1 };
@@ -500,6 +530,10 @@ export const useGameStore = create<GameState>((set, get) => ({
     const tension = boardTension(result.board);
     setMusicTension(tension);
 
+    // Land any burst still in flight before starting ours, so its timer can
+    // never fire into this one and wipe it mid-animation.
+    flushPendingClear();
+
     set({
       board: result.board,
       occupancyGrid: toOccupancyGrid(result.board),
@@ -519,10 +553,21 @@ export const useGameStore = create<GameState>((set, get) => ({
       },
     });
 
-    setTimeout(() => {
+    /**
+     * Routed through the same two-beat slot a placement uses, rather than a bare
+     * `setTimeout`. An untracked timer is invisible to `cancelPendingTimers` and
+     * to `flushPendingClear`, so using a bomb and then immediately placing a
+     * line-clearing piece let the bomb's timer fire into the *next* turn and wipe
+     * its `clearingCells` mid-burst — the clear animation just stopped.
+     */
+    const settleBurst = () => {
+      clearTimer = null;
+      pendingSettle = null;
       set({ clearingCells: [] });
       get().persist();
-    }, ANIMATION.clearTotalMs);
+    };
+    pendingSettle = settleBurst;
+    clearTimer = setTimeout(settleBurst, ANIMATION.clearTotalMs);
     return true;
   },
 
@@ -536,13 +581,40 @@ export const useGameStore = create<GameState>((set, get) => ({
     const remaining = s.tray.filter((slot) => slot !== null).length;
     if (remaining === 0) return false;
 
-    const fresh = generatePieces(s.board, { round: s.round, handSize: remaining });
-    let cursor = 0;
-    const tray = s.tray.map((slot) => (slot === null ? null : (fresh[cursor++] ?? slot)));
+    /**
+     * Above `fairnessOccupancyCeiling` the generator stops guaranteeing that a
+     * piece fits — and a near-full board is exactly when a player reaches for
+     * Refresh. Re-roll a few times before conceding: the guarantee is dropped,
+     * but nothing says we have to hand out the first dead hand we drew.
+     */
+    let tray = s.tray;
+    for (let attempt = 0; attempt < GENERATION_CONFIG.fairnessAttempts; attempt += 1) {
+      const fresh = generatePieces(s.board, { round: s.round, handSize: remaining });
+      let cursor = 0;
+      tray = s.tray.map((slot) => (slot === null ? null : (fresh[cursor++] ?? slot)));
+      if (!isGameOver(s.board, tray)) break;
+    }
 
     playSfx('power');
     haptics.medium();
     track('power_up_used', { kind: 'shuffle', cells: 0 });
+
+    /**
+     * If every re-roll was dead, end the run the same way a settled turn does.
+     * Leaving `status: 'playing'` with an unplaceable hand is a soft lock: no
+     * game-over sheet, no revive offer, and `endRun` never runs — so the whole
+     * run's score, coins and XP are silently discarded, and `persist()` writes
+     * the dead board so CONTINUE GAME restores it.
+     */
+    if (isGameOver(s.board, tray)) {
+      set({ tray, powerUps: inventory, armedPowerUp: null, status: 'clearing' });
+      setTimeout(() => {
+        if (get().status !== 'clearing') return;
+        get().endRun();
+      }, ANIMATION.gameOverDelayMs);
+      return true;
+    }
+
     set({ tray, powerUps: inventory, armedPowerUp: null });
     get().persist();
     return true;
@@ -554,6 +626,10 @@ export const useGameStore = create<GameState>((set, get) => ({
     set({ powerUps: { ...s.powerUps, [kind]: s.powerUps[kind] + amount } });
     playSfx('coin');
     haptics.success();
+    // Every other mutation of this inventory persists itself. Without this, a
+    // power-up earned from a rewarded ad is lost the moment the player leaves
+    // the run from the HUD, and the ad was watched for nothing.
+    get().persist();
   },
 
   /**
@@ -575,6 +651,9 @@ export const useGameStore = create<GameState>((set, get) => ({
     playSfx('coin');
     haptics.success();
     track('power_up_purchased', { kind, quantity, price });
+    // The coins were debited to persistent storage by `spendCoins` already, so
+    // not writing the inventory here destroys what the player just paid for.
+    get().persist();
     return true;
   },
 
@@ -699,6 +778,13 @@ export const useGameStore = create<GameState>((set, get) => ({
       revivesUsed: s.revivesUsed,
       powerUps: s.powerUps,
       round: s.round,
+      /**
+       * What this run has already been credited. A revived run is written to
+       * disk mid-flight; without this the resumed run looks unbanked and
+       * `runDelta` pays out its coins, XP, lines and game count a second time —
+       * the exact double-credit `runBanking` exists to prevent, and farmable.
+       */
+      banked: s.banked,
       savedAt: Date.now(),
     };
     saveSession(session);

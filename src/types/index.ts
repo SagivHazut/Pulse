@@ -1,3 +1,5 @@
+import type { BankedRun } from '../game/runBanking';
+
 /**
  * Core domain types for Pulse Blocks.
  *
@@ -150,6 +152,14 @@ export type SavedSession = {
   revivesUsed: number;
   powerUps: PowerUpInventory;
   round: number;
+  /**
+   * What this run has already been credited to the profile.
+   *
+   * Optional so saves written before this field existed stay readable. A revived
+   * run is persisted while it is still in flight; dropping this record makes the
+   * resumed run look unbanked and pays it out a second time in full.
+   */
+  banked?: BankedRun;
   savedAt: number;
 };
 

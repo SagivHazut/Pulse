@@ -107,6 +107,56 @@ describe('parseSession', () => {
   const roundTrip = (session: unknown) =>
     parseSession(safeJsonParse(JSON.stringify(session)), 4, 4);
 
+  /**
+   * `banked` is what stops a revived run being paid for twice. It used not to be
+   * persisted, so a revived run that was force-quit and resumed re-paid its
+   * whole score in coins, XP, lines and one extra `totalGames` — the exact
+   * double-credit `runBanking` exists to prevent, and farmable once per revive.
+   */
+  describe('the banked record', () => {
+    it('round-trips so a resumed revived run is not paid twice', () => {
+      const parsed = roundTrip({
+        ...validSession,
+        banked: { score: 500, lines: 4, bestCombo: 3, counted: true },
+      });
+      expect(parsed?.banked).toEqual({ score: 500, lines: 4, bestCombo: 3, counted: true });
+    });
+
+    it('is absent for saves written before the field existed', () => {
+      // Those saves predate any revive that could have banked them, so resuming
+      // as unbanked is correct — and must not reject the save.
+      const parsed = roundTrip(validSession);
+      expect(parsed).not.toBeNull();
+      expect(parsed?.banked).toBeUndefined();
+    });
+
+    it('clamps a tampered record to the run, so it can never inflate a payout', () => {
+      const parsed = roundTrip({
+        ...validSession,
+        banked: { score: 9_999_999, lines: 500, bestCombo: 99, counted: true },
+      });
+      // Claiming more was banked than the run earned would only ever *reduce*
+      // what is owed, but pin it anyway so the direction cannot flip.
+      expect(parsed?.banked).toEqual({ score: 500, lines: 4, bestCombo: 3, counted: true });
+    });
+
+    it('repairs a corrupt record instead of dropping the save', () => {
+      const parsed = roundTrip({
+        ...validSession,
+        banked: { score: 'lots', lines: null, bestCombo: -5, counted: 'yes' },
+      });
+      expect(parsed).not.toBeNull();
+      expect(parsed?.banked).toEqual({ score: 0, lines: 0, bestCombo: 0, counted: false });
+    });
+  });
+
+  it('refuses a hand whose every slot failed to parse', () => {
+    // Resuming into a tray of nothing but nulls is a soft lock: no piece can be
+    // placed, so the run can never end and is never banked.
+    const parsed = roundTrip({ ...validSession, tray: [{ junk: true }, 'nope', 42] });
+    expect(parsed).toBeNull();
+  });
+
   it('round-trips a valid session', () => {
     const parsed = roundTrip(validSession);
     expect(parsed).not.toBeNull();

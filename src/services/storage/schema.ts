@@ -1,5 +1,6 @@
 import { SAVE_VERSION } from '../../constants/config';
 import { isGameMode } from '../../game/modes';
+import type { BankedRun } from '../../game/runBanking';
 import type {
   Board,
   BlockColorId,
@@ -214,6 +215,32 @@ export function parseSession(
 
   // A hand of nothing but corrupt slots is not worth resuming into.
   if (tray.length === 0) return null;
+  if (tray.every((slot) => slot === null)) return null;
+
+  const score = Math.max(0, Math.floor(num(raw.score, 0, 0)));
+  const lines = Math.max(0, Math.floor(num(raw.linesClearedThisRun, 0, 0)));
+  const bestCombo = Math.max(0, Math.floor(num(raw.bestComboThisRun, 0, 0)));
+
+  /**
+   * What this run was already paid for, clamped to the run itself.
+   *
+   * Absent in saves written before the field existed, which resume as unbanked —
+   * correct, because those saves predate any revive that could have banked them.
+   * Clamped so a tampered file can only ever *reduce* a payout, never inflate
+   * one by claiming a bank larger than the run.
+   */
+  const bankedRaw = isRecord(raw.banked) ? raw.banked : null;
+  const banked: BankedRun | undefined = bankedRaw
+    ? {
+        score: Math.min(score, Math.max(0, Math.floor(num(bankedRaw.score, 0, 0)))),
+        lines: Math.min(lines, Math.max(0, Math.floor(num(bankedRaw.lines, 0, 0)))),
+        bestCombo: Math.min(
+          bestCombo,
+          Math.max(0, Math.floor(num(bankedRaw.bestCombo, 0, 0))),
+        ),
+        counted: bankedRaw.counted === true,
+      }
+    : undefined;
 
   return {
     version: SAVE_VERSION,
@@ -221,16 +248,17 @@ export function parseSession(
     mode: isGameMode(raw.mode) ? raw.mode : 'pulse',
     board,
     tray,
-    score: Math.max(0, Math.floor(num(raw.score, 0, 0))),
+    score,
     combo: Math.max(0, Math.floor(num(raw.combo, 0, 0))),
-    bestComboThisRun: Math.max(0, Math.floor(num(raw.bestComboThisRun, 0, 0))),
+    bestComboThisRun: bestCombo,
     turnsSinceClear: Math.max(0, Math.floor(num(raw.turnsSinceClear, 0, 0))),
     freezeCharges: Math.max(0, Math.floor(num(raw.freezeCharges, 0, 0))),
     pulseMeter: Math.min(1, Math.max(0, num(raw.pulseMeter, 0, 0))),
-    linesClearedThisRun: Math.max(0, Math.floor(num(raw.linesClearedThisRun, 0, 0))),
+    linesClearedThisRun: lines,
     revivesUsed: Math.max(0, Math.floor(num(raw.revivesUsed, 0, 0))),
     powerUps: parseInventory(raw.powerUps),
     round: Math.max(0, Math.floor(num(raw.round, 0, 0))),
+    banked,
     savedAt: num(raw.savedAt, 0, 0),
   };
 }
