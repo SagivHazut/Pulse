@@ -16,19 +16,23 @@ export const APP_VERSION = Constants.expoConfig?.version ?? '1.0.0';
 
 export type LegalLinks = {
   privacy: string;
-  terms: string;
   support: string;
 };
 
 /**
  * Legal links live in `app.json` under `extra.legal`, not in code.
  *
- * They depend on where you host the pages, which is a deployment decision rather
+ * They depend on where you host the page, which is a deployment decision rather
  * than a source change — and keeping them in config lets `npm run preflight`
- * refuse to ship while they are still empty. An empty link is *hidden* rather
- * than rendered as a dead row: a "Privacy policy" that opens nothing is worse
- * than one that isn't there, and preflight guarantees a release can't get that
- * far anyway.
+ * refuse to ship while they are still empty.
+ *
+ * The privacy URL is no longer what the app *opens* — Settings renders the
+ * policy natively from `legalContent.ts`. It is still required, because both
+ * store listings and the AdMob account demand a publicly reachable one, and
+ * the in-app screen prints it so a reader can find the canonical copy.
+ *
+ * There is no terms link: neither store requires one, and Apple applies its
+ * Standard EULA to apps that supply none.
  */
 function readLegalLinks(): LegalLinks {
   const configured = Constants.expoConfig?.extra?.legal as Partial<LegalLinks> | undefined;
@@ -37,7 +41,6 @@ function readLegalLinks(): LegalLinks {
 
   return {
     privacy: clean(configured?.privacy),
-    terms: clean(configured?.terms),
     support: clean(configured?.support),
   };
 }

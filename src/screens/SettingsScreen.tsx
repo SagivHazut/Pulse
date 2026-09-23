@@ -1,5 +1,5 @@
 import React from 'react';
-import { Linking, ScrollView, StyleSheet, Text, View } from 'react-native';
+import { ScrollView, StyleSheet, Text, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { AnimatedBackdrop } from '../components/animations/AnimatedBackdrop';
@@ -22,7 +22,7 @@ import { usePlayerStore } from '../stores/usePlayerStore';
 import { useRouterStore } from '../stores/useRouterStore';
 import { useSettingsStore } from '../stores/useSettingsStore';
 import { showToast } from '../stores/useUiStore';
-import { APP_VERSION, LEGAL_LINKS, hasLink } from '../constants/app';
+import { APP_VERSION } from '../constants/app';
 import { GLYPH } from '../theme/glyphs';
 import { FONT_SIZE, FONT_WEIGHT, RADIUS, SPACING } from '../theme/tokens';
 
@@ -40,16 +40,6 @@ export function SettingsScreen() {
   const unlockedAchievements = usePlayerStore((s) => s.unlockedAchievements);
 
   const progress = levelProgress(xp);
-
-  const openLink = async (url: string, label: string) => {
-    try {
-      const supported = await Linking.canOpenURL(url);
-      if (supported) await Linking.openURL(url);
-      else showToast(`${label} unavailable`, 'warning');
-    } catch {
-      showToast(`Could not open ${label}`, 'warning');
-    }
-  };
 
   return (
     <View style={[styles.root, { backgroundColor: theme.colors.background }]}>
@@ -181,15 +171,14 @@ export function SettingsScreen() {
             preflight` fails while these are empty, so a release cannot ship
             without them.
           */}
-          {hasLink(LEGAL_LINKS.privacy) ? (
-            <LinkRow
-              label="Privacy policy"
-              onPress={() => openLink(LEGAL_LINKS.privacy, 'Privacy policy')}
-            />
-          ) : null}
-          {hasLink(LEGAL_LINKS.terms) ? (
-            <LinkRow label="Terms of use" onPress={() => openLink(LEGAL_LINKS.terms, 'Terms')} />
-          ) : null}
+          {/*
+            Opens the policy inside the app rather than handing it to a browser.
+            The text ships with the build (generated from the same Markdown as
+            the hosted page), so it renders instantly, stays on theme and works
+            with no connection — the hosted URL is still what the store listings
+            and AdMob point at.
+          */}
+          <LinkRow label="Privacy policy" onPress={() => go('privacy')} />
           {/*
             Shown only where UMP says an ongoing consent control is required
             (EEA/UK). That is a legal obligation rather than a nicety, which is

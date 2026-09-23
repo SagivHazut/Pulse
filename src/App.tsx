@@ -26,6 +26,7 @@ import { hydrateStorage } from './services/storage';
 import { getPlayerData } from './services/storage/playerData';
 import { GameScreen } from './screens/GameScreen';
 import { HomeScreen } from './screens/HomeScreen';
+import { PrivacyScreen } from './screens/PrivacyScreen';
 import { SettingsScreen } from './screens/SettingsScreen';
 import { SplashScreen } from './screens/SplashScreen';
 import { ThemesScreen } from './screens/ThemesScreen';
@@ -47,6 +48,13 @@ import { useUiStore } from './stores/useUiStore';
 export default function App() {
   const [ready, setReady] = useState(false);
   const [splashDone, setSplashDone] = useState(false);
+  /**
+   * Stable, so the splash's minimum-duration timer is armed once at mount. An
+   * inline arrow changed identity when boot finished, which tore the timer down
+   * and started a fresh one — making the splash last boot time *plus* its
+   * minimum, instead of overlapping it as intended.
+   */
+  const handleSplashDone = useCallback(() => setSplashDone(true), []);
 
   useEffect(() => {
     let cancelled = false;
@@ -99,7 +107,7 @@ export default function App() {
       <SafeAreaProvider>
         <GestureHandlerRootView style={styles.root}>
           <ThemedStatusBar />
-          <SplashScreen onDone={() => setSplashDone(true)} />
+          <SplashScreen onDone={handleSplashDone} />
         </GestureHandlerRootView>
       </SafeAreaProvider>
     );
@@ -188,6 +196,8 @@ function RootNavigator() {
         <ThemesScreen />
       ) : route === 'settings' ? (
         <SettingsScreen />
+      ) : route === 'privacy' ? (
+        <PrivacyScreen />
       ) : (
         <HomeScreen />
       )}

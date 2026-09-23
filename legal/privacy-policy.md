@@ -96,8 +96,9 @@ photos, files or location.
 
 ## Changes to this policy
 
-If this policy changes, the "Last updated" date above changes with it, and the
-current version is always available at this URL.
+If this policy changes, the "Last updated" date above changes with it. The same
+text is shown inside the app and published at the privacy policy address listed
+on our store pages, so the two are always the same document.
 
 ## Contact
 

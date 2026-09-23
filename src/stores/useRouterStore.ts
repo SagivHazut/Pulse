@@ -9,7 +9,7 @@ import { create } from 'zustand';
  * without touching screen components, which never import this directly except to
  * call `go`.
  */
-export type Route = 'splash' | 'home' | 'game' | 'themes' | 'settings';
+export type Route = 'splash' | 'home' | 'game' | 'themes' | 'settings' | 'privacy';
 
 type RouterState = {
   route: Route;

@@ -1,8 +1,16 @@
 #!/usr/bin/env node
 /**
- * Renders legal/*.md into docs/ as standalone HTML for GitHub Pages.
+ * Renders legal/*.md into two things, from one source:
+ *
+ *   docs/*.html                  the hosted pages the stores and AdMob link to
+ *   src/constants/legalContent.ts   the same text, for the in-app screen
  *
  *   npm run legal
+ *
+ * The in-app copy exists so the policy renders natively — themed, readable
+ * offline, and without a browser chrome showing a domain. Generating both from
+ * the same Markdown is the point: a hosted policy that disagrees with the one
+ * in the app is worse than having only one of them.
  *
  * GitHub Pages can render Markdown itself, but only with a Jekyll theme and a
  * repo configured for it. Plain HTML always works, needs no build on GitHub's
@@ -21,10 +29,15 @@ const root = path.join(__dirname, '..');
 const srcDir = path.join(root, 'legal');
 const outDir = path.join(root, 'docs');
 
-const PAGES = [
-  { src: 'privacy-policy.md', out: 'privacy.html', title: 'Privacy Policy' },
-  { src: 'terms-of-use.md', out: 'terms.html', title: 'Terms of Use' },
-];
+/**
+ * Terms of Use is deliberately not published.
+ *
+ * Neither store requires one, and Apple applies its Standard EULA when an app
+ * supplies no custom terms. This game has no accounts, no user content and no
+ * purchases, so there is nothing a custom agreement would usefully say.
+ * `legal/terms-of-use.md` is kept in the repo in case that changes.
+ */
+const PAGES = [{ src: 'privacy-policy.md', out: 'privacy.html', title: 'Privacy Policy' }];
 
 const escape = (s) =>
   s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
@@ -37,34 +50,38 @@ function inline(text) {
     .replace(/(^|[\s(])(https?:\/\/[^\s)]+)/g, '$1<a href="$2">$2</a>');
 }
 
-function toHtml(markdown) {
+/**
+ * Markdown -> a small block tree.
+ *
+ * One parser feeds both outputs. Writing a second one for the app would let the
+ * hosted policy and the in-app policy drift apart, which for a legal document
+ * is the one failure that actually matters.
+ *
+ * Supports exactly what these documents use: headings, bullets, paragraphs that
+ * wrap across source lines, and bold. Anything else passes through as text.
+ */
+function parse(markdown) {
   // Strip HTML comments: they carry instructions for whoever publishes the page,
   // not content for the reader.
   const lines = markdown.replace(/<!--[\s\S]*?-->/g, '').split('\n');
-  const out = [];
+  const blocks = [];
   let inList = false;
   /**
    * Markdown paragraphs wrap across source lines and are only ended by a blank
-   * line. Emitting one <p> per line splits sentences mid-clause with a paragraph
-   * gap in the middle — which is exactly how the first render came out.
+   * line. Emitting one block per line splits sentences mid-clause with a gap in
+   * the middle — which is exactly how the first render came out.
    */
   let paragraph = [];
 
   const flushParagraph = () => {
     if (paragraph.length > 0) {
-      out.push(`<p>${inline(paragraph.join(' '))}</p>`);
+      blocks.push({ kind: 'p', text: paragraph.join(' ') });
       paragraph = [];
-    }
-  };
-  const closeList = () => {
-    if (inList) {
-      out.push('</ul>');
-      inList = false;
     }
   };
   const closeBlocks = () => {
     flushParagraph();
-    closeList();
+    inList = false;
   };
 
   for (const line of lines) {
@@ -77,33 +94,104 @@ function toHtml(markdown) {
     const heading = trimmed.match(/^(#{1,4})\s+(.*)$/);
     if (heading) {
       closeBlocks();
-      const level = heading[1].length;
-      out.push(`<h${level}>${inline(heading[2])}</h${level}>`);
+      blocks.push({ kind: `h${heading[1].length}`, text: heading[2] });
       continue;
     }
 
     const bullet = trimmed.match(/^[-*]\s+(.*)$/);
     if (bullet) {
       flushParagraph();
-      if (!inList) {
-        out.push('<ul>');
-        inList = true;
-      }
-      out.push(`<li>${inline(bullet[1])}</li>`);
+      inList = true;
+      blocks.push({ kind: 'li', text: bullet[1] });
       continue;
     }
 
     // A wrapped continuation of the current list item, not a new paragraph.
     if (inList) {
-      const last = out.length - 1;
-      out[last] = out[last].replace(/<\/li>$/, ` ${inline(trimmed)}</li>`);
+      blocks[blocks.length - 1].text += ` ${trimmed}`;
       continue;
     }
 
     paragraph.push(trimmed);
   }
   closeBlocks();
+  return blocks;
+}
+
+/** Split a line into plain and bold runs, for renderers that need the pieces. */
+function spans(text) {
+  const out = [];
+  const re = /\*\*(.+?)\*\*/g;
+  let last = 0;
+  let m;
+  while ((m = re.exec(text)) !== null) {
+    if (m.index > last) out.push({ text: text.slice(last, m.index) });
+    out.push({ text: m[1], bold: true });
+    last = m.index + m[0].length;
+  }
+  if (last < text.length) out.push({ text: text.slice(last) });
+  return out.length > 0 ? out : [{ text }];
+}
+
+function toHtml(markdown) {
+  const out = [];
+  let inList = false;
+  for (const block of parse(markdown)) {
+    if (block.kind === 'li') {
+      if (!inList) {
+        out.push('<ul>');
+        inList = true;
+      }
+      out.push(`<li>${inline(block.text)}</li>`);
+      continue;
+    }
+    if (inList) {
+      out.push('</ul>');
+      inList = false;
+    }
+    if (block.kind === 'p') out.push(`<p>${inline(block.text)}</p>`);
+    else out.push(`<${block.kind}>${inline(block.text)}</${block.kind}>`);
+  }
+  if (inList) out.push('</ul>');
   return out.join('\n');
+}
+
+/** The same blocks, as a TypeScript module the app imports. */
+function toTypeScript(markdown, sourceFile) {
+  const blocks = parse(markdown).map((b) => ({ kind: b.kind, spans: spans(b.text) }));
+  const updated = (markdown.match(/Last updated:\s*([^*\n]+)/) ?? [, ''])[1].trim();
+  const body = blocks
+    .map((b) => {
+      const parts = b.spans
+        .map((s) => (s.bold ? `{ text: ${JSON.stringify(s.text)}, bold: true }` : `{ text: ${JSON.stringify(s.text)} }`))
+        .join(', ');
+      return `  { kind: '${b.kind}', spans: [${parts}] },`;
+    })
+    .join('\n');
+
+  return `/**
+ * GENERATED FILE — do not edit.
+ *
+ * Built from legal/${sourceFile} by scripts/build-legal-pages.js (\`npm run legal\`),
+ * which renders the same source to docs/privacy.html. Edit the Markdown and
+ * re-run; editing this file loses the change on the next build and puts the
+ * app out of step with the hosted policy.
+ */
+
+export type LegalSpan = { text: string; bold?: boolean };
+
+export type LegalBlock = {
+  kind: 'h1' | 'h2' | 'h3' | 'h4' | 'p' | 'li';
+  spans: LegalSpan[];
+};
+
+/** Shown in the app so a reader can tell which revision they are looking at. */
+export const PRIVACY_UPDATED = ${JSON.stringify(updated)};
+
+export const PRIVACY_POLICY: readonly LegalBlock[] = [
+${body}
+];
+`;
 }
 
 const shell = (title, body) => `<!doctype html>
@@ -151,6 +239,12 @@ for (const page of PAGES) {
   }
   fs.writeFileSync(path.join(outDir, page.out), shell(page.title, toHtml(markdown)));
   console.log(`  ✓ docs/${page.out}`);
+
+  if (page.src === 'privacy-policy.md') {
+    const tsPath = path.join(root, 'src', 'constants', 'legalContent.ts');
+    fs.writeFileSync(tsPath, toTypeScript(markdown, page.src));
+    console.log('  ✓ src/constants/legalContent.ts');
+  }
 }
 
 const index = shell(
@@ -159,7 +253,6 @@ const index = shell(
 <p>Legal documents for the Pulse Blocks mobile game.</p>
 <ul>
   <li><a href="./privacy.html">Privacy Policy</a></li>
-  <li><a href="./terms.html">Terms of Use</a></li>
 </ul>`,
 );
 fs.writeFileSync(path.join(outDir, 'index.html'), index);
