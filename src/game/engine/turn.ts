@@ -47,8 +47,12 @@ export function resolveTurn(input: TurnInput): ResolvedTurn {
     if (combo > 0 && turnsSinceClear > COMBO_CONFIG.graceTurns) {
       if (freezeCharges > 0) {
         // A Freeze tile buys one more turn of grace before the chain drops.
+        // Winding the counter back to the edge of the window — not to zero —
+        // is what makes that one turn. Zeroing it restarted the whole window,
+        // so a charge was worth `graceTurns + 1` turns, three times what the
+        // tile's own description and the README promise.
         freezeCharges -= 1;
-        turnsSinceClear = 0;
+        turnsSinceClear = COMBO_CONFIG.graceTurns;
       } else {
         combo = 0;
       }

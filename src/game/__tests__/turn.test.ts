@@ -53,7 +53,50 @@ describe('resolveTurn combo handling', () => {
     );
     expect(result.combo).toBe(3);
     expect(result.freezeCharges).toBe(0);
-    expect(result.turnsSinceClear).toBe(0);
+    // Wound back to the edge of the window, not to zero — see below.
+    expect(result.turnsSinceClear).toBe(COMBO_CONFIG.graceTurns);
+  });
+
+  /**
+   * The Freeze tile is advertised as "one extra turn of grace" by both the
+   * README and `POWER_TILE_META.freeze.description`. Resetting the counter to
+   * zero restarted the whole window instead, making one charge worth
+   * `graceTurns + 1` turns — three times what the player is told.
+   */
+  it('buys exactly one extra turn, not a whole fresh window', () => {
+    const afterFreeze = resolveTurn(
+      baseInput({ combo: 3, turnsSinceClear: COMBO_CONFIG.graceTurns, freezeCharges: 1 }),
+    );
+    expect(afterFreeze.combo).toBe(3);
+
+    // The very next miss, with no charge left, must drop the chain.
+    const nextMiss = resolveTurn(
+      baseInput({
+        combo: afterFreeze.combo,
+        turnsSinceClear: afterFreeze.turnsSinceClear,
+        freezeCharges: afterFreeze.freezeCharges,
+      }),
+    );
+    expect(nextMiss.combo).toBe(0);
+  });
+
+  it('spends one charge per missed turn while charges last', () => {
+    let state: { combo: number; turnsSinceClear: number; freezeCharges: number } = {
+      combo: 3,
+      turnsSinceClear: COMBO_CONFIG.graceTurns,
+      freezeCharges: 2,
+    };
+    for (let miss = 0; miss < 2; miss += 1) {
+      const result = resolveTurn(baseInput(state));
+      expect(result.combo).toBe(3);
+      state = {
+        combo: result.combo,
+        turnsSinceClear: result.turnsSinceClear,
+        freezeCharges: result.freezeCharges,
+      };
+    }
+    expect(state.freezeCharges).toBe(0);
+    expect(resolveTurn(baseInput(state)).combo).toBe(0);
   });
 });
 
