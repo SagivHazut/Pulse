@@ -11,7 +11,12 @@ import {
 } from 'react-native-reanimated';
 
 import { ANIMATION } from '../../constants/config';
-import { canPlaceOnGrid, cellUnderPiece, isOffBoard } from '../../game/dragMath';
+import {
+  canPlaceOnGrid,
+  cellUnderPiece,
+  isOffBoard,
+  shouldReleaseDragLayer,
+} from '../../game/dragMath';
 import { useTheme } from '../../hooks/useTheme';
 import { playSfx } from '../../services/audio';
 import { haptics } from '../../services/haptics';
@@ -61,9 +66,13 @@ export function DraggablePiece({ piece, slotIndex, slotCenters, slotSize, dead }
 
   /**
    * Which drag this piece owns. The fly-home animation's completion callback
-   * compares this against the live session, so a cancelled return can never
-   * clean up a *different* piece's drag — that race left the airborne piece
-   * invisible.
+   * compares this against the live session, so a return that lands late can
+   * never clean up a *different* piece's drag.
+   *
+   * It lives on the piece, not on the drag, so it cannot catch a re-grab of
+   * this same piece — `onBegin` has already bumped it by the time a cancelled
+   * flight calls back. That case is caught by the animation's `finished` flag.
+   * See `shouldReleaseDragLayer`.
    */
   const dragId = useSharedValue(0);
 
@@ -182,10 +191,17 @@ export function DraggablePiece({ piece, slotIndex, slotCenters, slotSize, dead }
           runOnJS(setPreview)({ row, col, valid: valid === 1 });
         }
       })
-      .onFinalize(() => {
+      /**
+       * `onFinalize` fires on END *and* on FAILED/CANCELLED, so the success flag
+       * is the only thing that distinguishes a deliberate release from the
+       * system taking the touch away — an incoming call, a notification pulled
+       * down, another recogniser winning. Without it, a drag that happened to be
+       * hovering a valid cell when it was cancelled spent the player's turn.
+       */
+      .onFinalize((_event, success) => {
         'worklet';
-        const placed = lastValid.value === 1;
-        const wasOverBoard = lastRow.value !== -999;
+        const placed = success && lastValid.value === 1;
+        const wasOverBoard = success && lastRow.value !== -999;
         const row = lastRow.value;
         const col = lastCol.value;
 
@@ -211,12 +227,15 @@ export function DraggablePiece({ piece, slotIndex, slotCenters, slotSize, dead }
         const rest = home();
         motion.scale.value = withSpring(ANIMATION.trayScale, { damping: 18, stiffness: 300 });
         motion.centerX.value = withSpring(rest.x, { damping: 20, stiffness: 240 });
-        motion.centerY.value = withSpring(rest.y, { damping: 20, stiffness: 240 }, () => {
+        motion.centerY.value = withSpring(rest.y, { damping: 20, stiffness: 240 }, (finished) => {
           'worklet';
-          // Only hide the layer if a newer drag has not already claimed it —
-          // but always release React state, which is keyed to this piece and so
-          // cannot disturb whoever came next.
-          if (motion.session.value === dragId.value) motion.active.value = 0;
+          // Hand the piece back to the tray only if this flight actually landed
+          // and still owns the layer. A cancelled flight means a live drag took
+          // over, and releasing here would hide the piece under the finger.
+          if (!shouldReleaseDragLayer(finished === true, motion.session.value, dragId.value)) {
+            return;
+          }
+          motion.active.value = 0;
           runOnJS(endDrag)();
         });
       });

@@ -94,3 +94,60 @@ export function isOffBoard(
   'worklet';
   return row < -margin || col < -margin || row > rows + margin - 1 || col > columns + margin - 1;
 }
+
+/**
+ * Which cell a tap inside the grid landed on.
+ *
+ * `locationX/Y` are relative to the view that received the touch, and the
+ * targeting overlay is already inset by the board padding — the cells inside it
+ * start at `0`, not at `padding`. Subtracting the padding a second time shifted
+ * the whole hit grid by 8dp, about a fifth of a cell: taps near a cell's left or
+ * top edge detonated a power-up on the neighbour, and the first 8dp of the grid
+ * resolved to -1 and were swallowed.
+ *
+ * Returns null when the tap is outside the grid.
+ */
+export function cellUnderTap(
+  locationX: number,
+  locationY: number,
+  cellStride: number,
+  rows: number,
+  columns: number,
+): { row: number; col: number } | null {
+  if (!(cellStride > 0)) return null;
+  const col = Math.floor(locationX / cellStride);
+  const row = Math.floor(locationY / cellStride);
+  if (row < 0 || col < 0 || row >= rows || col >= columns) return null;
+  return { row, col };
+}
+
+/**
+ * Should a fly-home animation's completion hand the piece back to the tray?
+ *
+ * A piece dropped with no placement animates back to its slot, and the drag
+ * layer only lets go when that animation lands. Two things can make that
+ * callback wrong to act on:
+ *
+ *  - **It was cancelled.** Assigning to the position shared values stops the
+ *    spring, and Reanimated still calls back, with `finished === false`. The
+ *    only thing that assigns them is a new drag's `track()`, so a cancelled
+ *    flight always means a live drag has taken the layer over. It owns the
+ *    cleanup now; doing it here hides the piece the player is holding.
+ *  - **Another piece owns the layer.** `session` is bumped on every pickup;
+ *    `dragId` is the session this flight belongs to.
+ *
+ * `finished` is what catches a re-grab of the *same* piece, which the session
+ * check alone cannot: `dragId` lives on the piece, and the new drag's `onBegin`
+ * has already bumped it by the time this runs, so both sides read the new
+ * session and the check passes. Measured on an iPhone 17:
+ * `finished=false session=4 dragId=4` — the guard agreeing with itself while
+ * the player drags an invisible piece.
+ */
+export function shouldReleaseDragLayer(
+  finished: boolean,
+  session: number,
+  dragId: number,
+): boolean {
+  'worklet';
+  return finished && session === dragId;
+}

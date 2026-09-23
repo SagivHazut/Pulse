@@ -15,6 +15,7 @@ import { findCompletedLines } from '../../game/engine/lines';
 import { placePiece } from '../../game/engine/placement';
 import { useTheme } from '../../hooks/useTheme';
 import { coordKey } from '../../game/engine/board';
+import { cellUnderTap } from '../../game/dragMath';
 import { RADIUS } from '../../theme/tokens';
 import type { Board as BoardType, Coord, Piece, PowerUpKind } from '../../types';
 import type { BoardMetrics } from '../../utils/layout';
@@ -110,19 +111,33 @@ export function Board({
       lastTap.current = now;
 
       const { locationX, locationY } = event.nativeEvent;
-      const col = Math.floor((locationX - padding) / cellStride);
-      const row = Math.floor((locationY - padding) / cellStride);
-      if (row < 0 || col < 0 || row >= ROWS || col >= COLUMNS) return;
-      onCellPress({ row, col });
+      // Relative to the targeting overlay, which is already inset by `padding` —
+      // so the cells inside it start at 0. See `cellUnderTap`.
+      const target = cellUnderTap(locationX, locationY, cellStride, ROWS, COLUMNS);
+      if (!target) return;
+      onCellPress(target);
     },
-    [armedPowerUp, cellStride, onCellPress, padding],
+    [armedPowerUp, cellStride, onCellPress],
   );
 
   const ghostCells = useMemo(() => {
     if (!preview || !draggingPiece) return [];
-    return draggingPiece.cells
-      .map((cell) => ({ row: preview.row + cell.r, col: preview.col + cell.c, power: cell.power }))
-      .filter((c) => c.row >= 0 && c.col >= 0 && c.row < ROWS && c.col < COLUMNS);
+    return (
+      draggingPiece.cells
+        // `r`/`c` are the cell's offset *within the piece*, carried through so the
+        // ghost can be keyed by it. Keying by absolute board position instead
+        // changed every key each time the piece crossed a cell boundary, so React
+        // tore down and rebuilt every ghost view ~20 times a second mid-drag
+        // instead of updating two numbers on each.
+        .map((cell) => ({
+          r: cell.r,
+          c: cell.c,
+          row: preview.row + cell.r,
+          col: preview.col + cell.c,
+          power: cell.power,
+        }))
+        .filter((c) => c.row >= 0 && c.col >= 0 && c.row < ROWS && c.col < COLUMNS)
+    );
   }, [preview, draggingPiece]);
 
   return (
@@ -181,9 +196,14 @@ export function Board({
         )}
 
         {/* Lines this drop would complete — the strongest signal on the board. */}
-        {completing?.rows.map((r) => (
+        {/*
+          Keyed by slot, not by row: these are plain stateless Views, so reusing
+          the slot moves an existing view instead of unmounting one and mounting
+          another every time the hovered piece shifts.
+        */}
+        {completing?.rows.map((r, slot) => (
           <View
-            key={`hl-row-${r}`}
+            key={`hl-row-${slot}`}
             pointerEvents="none"
             style={{
               position: 'absolute',
@@ -198,9 +218,9 @@ export function Board({
             }}
           />
         ))}
-        {completing?.cols.map((c) => (
+        {completing?.cols.map((c, slot) => (
           <View
-            key={`hl-col-${c}`}
+            key={`hl-col-${slot}`}
             pointerEvents="none"
             style={{
               position: 'absolute',
@@ -220,7 +240,7 @@ export function Board({
         {ghostCells.map((cell) =>
           preview?.valid ? (
             <View
-              key={`ghost-${cell.row}-${cell.col}`}
+              key={`ghost-${cell.r}-${cell.c}`}
               pointerEvents="none"
               style={{
                 position: 'absolute',
@@ -238,7 +258,7 @@ export function Board({
             </View>
           ) : (
             <View
-              key={`ghost-${cell.row}-${cell.col}`}
+              key={`ghost-${cell.r}-${cell.c}`}
               pointerEvents="none"
               style={{
                 position: 'absolute',
