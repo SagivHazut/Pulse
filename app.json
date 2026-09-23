@@ -79,7 +79,8 @@
       "legal": {
         "privacy": "https://sagivhazut.github.io/Pulse/privacy.html",
         "support": "mailto:sagivhazut@gmail.com"
-      }
+      },
+      "demoSeed": true
     }
   }
 }

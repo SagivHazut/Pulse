@@ -23,6 +23,7 @@ import {
 import { initAudio, startMusic, stopMusic } from './services/audio';
 import { setHapticsEnabled } from './services/haptics';
 import { hydrateStorage } from './services/storage';
+import { applyDemoSeed } from './services/storage/demoSeed';
 import { getPlayerData } from './services/storage/playerData';
 import { GameScreen } from './screens/GameScreen';
 import { HomeScreen } from './screens/HomeScreen';
@@ -66,6 +67,10 @@ export default function App() {
         // Storage is optional; the game runs from memory if it fails.
       }
       if (cancelled) return;
+
+      // Dev-only, and before the stores read anything, so a seeded profile is
+      // what the first paint shows rather than a zeroed one.
+      applyDemoSeed();
 
       const data = getPlayerData();
 
