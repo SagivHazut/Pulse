@@ -52,6 +52,25 @@ export function DailyRewardSheet({ visible, onClose }: Props) {
     [],
   );
 
+  /**
+   * Closing drops the reveal.
+   *
+   * HomeScreen keeps this component mounted and only toggles `visible`, so
+   * without this the reveal state survived — and every later open of Daily was
+   * the already-claimed reveal screen, confetti and all, instead of the
+   * calendar. Every close path routes through here, and `Sheet` has no exit
+   * animation, so the reset is invisible.
+   */
+  const handleClose = useCallback(() => {
+    if (closeTimer.current) {
+      clearTimeout(closeTimer.current);
+      closeTimer.current = null;
+    }
+    setClaimed(null);
+    setBusy(false);
+    onClose();
+  }, [onClose]);
+
   const finish = useCallback(
     (amount: number, day: number, doubled: boolean) => {
       if (amount <= 0) return;
@@ -59,9 +78,9 @@ export function DailyRewardSheet({ visible, onClose }: Props) {
       haptics.success();
       setClaimed({ amount, day, doubled });
       showToast(`+${amount.toLocaleString()} coins`, 'success');
-      closeTimer.current = setTimeout(onClose, REVEAL_MS);
+      closeTimer.current = setTimeout(handleClose, REVEAL_MS);
     },
-    [onClose],
+    [handleClose],
   );
 
   const handleClaim = useCallback(() => {
@@ -91,7 +110,7 @@ export function DailyRewardSheet({ visible, onClose }: Props) {
   if (claimed) {
     const isMystery = claimed.day === DAILY_REWARD.cycle.length;
     return (
-      <Sheet visible={visible} onClose={onClose} title="Daily Reward">
+      <Sheet visible={visible} onClose={handleClose} title="Daily Reward">
         {(isMystery || claimed.doubled) && !reducedMotion ? (
           <Confetti colors={theme.particles} count={26} seed={claimed.amount} />
         ) : null}
@@ -116,13 +135,13 @@ export function DailyRewardSheet({ visible, onClose }: Props) {
           {streak} day streak · come back tomorrow
         </Text>
 
-        <Button label="NICE" fullWidth onPress={onClose} />
+        <Button label="NICE" fullWidth onPress={handleClose} />
       </Sheet>
     );
   }
 
   return (
-    <Sheet visible={visible} onClose={onClose} title="Daily Reward">
+    <Sheet visible={visible} onClose={handleClose} title="Daily Reward">
       <Text style={[styles.streak, { color: theme.colors.textMuted }]}>
         {streak > 0 ? `${streak} day streak` : 'Come back daily for bigger rewards'}
       </Text>
