@@ -12,7 +12,6 @@ import { levelProgress } from '../game/progression';
 import { startMusic } from '../services/audio';
 import { loadSession, sessionModes } from '../services/storage/session';
 import { useGameStore } from '../stores/useGameStore';
-import { useMonetizationStore } from '../stores/useMonetizationStore';
 import { usePlayerStore } from '../stores/usePlayerStore';
 import { useRouterStore } from '../stores/useRouterStore';
 import { useSettingsStore } from '../stores/useSettingsStore';
@@ -43,7 +42,6 @@ export function HomeScreen() {
 
   const startNewGame = useGameStore((s) => s.startNewGame);
   const resumeFrom = useGameStore((s) => s.resumeFrom);
-  const beginRun = useMonetizationStore((s) => s.beginRun);
 
   /**
    * Which modes have a run waiting, read once on mount for both modes at the
@@ -63,10 +61,9 @@ export function HomeScreen() {
   const progress = levelProgress(xp);
 
   const handlePlay = useCallback(() => {
-    beginRun();
     startNewGame(selectedMode);
     go('game');
-  }, [beginRun, go, startNewGame, selectedMode]);
+  }, [go, startNewGame, selectedMode]);
 
   const handleResume = useCallback(() => {
     const session = loadSession(selectedMode);
@@ -76,10 +73,9 @@ export function HomeScreen() {
       handlePlay();
       return;
     }
-    beginRun();
     resumeFrom(session);
     go('game');
-  }, [beginRun, go, handlePlay, resumeFrom, selectedMode]);
+  }, [go, handlePlay, resumeFrom, selectedMode]);
 
   return (
     <View style={[styles.root, { backgroundColor: theme.colors.background }]}>

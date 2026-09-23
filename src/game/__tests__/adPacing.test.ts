@@ -123,8 +123,17 @@ describe('rollInterstitialGap', () => {
  * govern them should not drift back to something timid by accident.
  */
 describe('the ads-only revenue model stays intact', () => {
-  it('offers more than one revive per run', () => {
-    expect(REVIVE_CONFIG.MAX_REVIVES_PER_RUN).toBeGreaterThanOrEqual(2);
+  it('keeps the revive placement alive at all', () => {
+    // The largest rewarded placement in the game. The cap is a deliberate
+    // product decision, so this guards the floor — that it is never quietly
+    // turned off — rather than demanding a particular number.
+    expect(REVIVE_CONFIG.MAX_REVIVES_PER_RUN).toBeGreaterThanOrEqual(1);
+  });
+
+  it('never lets a single run be revived indefinitely', () => {
+    // Every revive extends the *same* run, so an uncapped revive would make the
+    // high-score table a measure of ads watched.
+    expect(REVIVE_CONFIG.MAX_REVIVES_PER_RUN).toBeLessThanOrEqual(3);
   });
 
   it('protects the first sessions from unskippable ads', () => {

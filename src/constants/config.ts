@@ -105,11 +105,14 @@ export const TENSION_CONFIG = {
 export const REVIVE_CONFIG = {
   /**
    * The revive is the strongest placement in the game: the player wants it at
-   * the exact moment it is offered, and it is entirely opt-in. Two per run is
-   * the main rewarded lever — raise it further only if run length starts to
-   * feel padded.
+   * the exact moment it is offered, and it is entirely opt-in.
+   *
+   * One per run keeps a score honest — every revive stretches the *same* run,
+   * so a second one dilutes the high-score table more than it earns. It also
+   * keeps the offer feeling like a reprieve rather than a resource to spend.
+   * Raise it only if impressions turn out to matter more than the leaderboard.
    */
-  MAX_REVIVES_PER_RUN: 2,
+  MAX_REVIVES_PER_RUN: 1,
   /** Fraction of occupied tiles removed by a revive. */
   clearRatioMin: 0.2,
   clearRatioMax: 0.3,

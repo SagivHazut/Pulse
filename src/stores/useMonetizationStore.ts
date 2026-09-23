@@ -25,7 +25,11 @@ type MonetizationState = {
   adInFlight: boolean;
 
   hydrate(): void;
-  beginRun(): void;
+  /**
+   * Starts a run's ad accounting. `usedAlready` seeds it from a resumed save, so
+   * reviving, quitting and resuming cannot hand back a fresh revive budget.
+   */
+  beginRun(usedAlready?: number): void;
   canRevive(): boolean;
   registerRevive(): void;
   canOfferRescue(): boolean;
@@ -54,8 +58,8 @@ export const useMonetizationStore = create<MonetizationState>((set, get) => ({
     });
   },
 
-  beginRun() {
-    set({ revivesUsedThisRun: 0 });
+  beginRun(usedAlready = 0) {
+    set({ revivesUsedThisRun: Math.max(0, usedAlready) });
   },
 
   canRevive() {
