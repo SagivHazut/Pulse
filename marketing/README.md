@@ -103,9 +103,14 @@ adb pull /sdcard/out.mp4
 the next launch, and it is the only way to be sure a screenshot is not carrying
 state from the previous one.
 
-Finally: **set `expo.extra.demoSeed` back to `false`.** `npm run preflight` does
-not check it, because it cannot affect a release build — but a dev build with a
-seeded profile overwrites your own save every launch.
+Finally: **set `expo.extra.demoSeed` back to `false`** and rebuild. The flag is
+read from the app config embedded in the binary at build time, so flipping it
+without a rebuild changes nothing — a Metro reload will not do it.
+
+`npm run preflight` does not check the flag, because it cannot reach a release
+build: `demoSeedEnabled()` requires `__DEV__` as well. What it can do is quietly
+overwrite your own save on every launch of a dev build, which is the reason to
+turn it off rather than leave it.
 
 ## Store requirements
 
