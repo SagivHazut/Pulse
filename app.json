@@ -15,7 +15,7 @@
       "backgroundColor": "#0A0C17"
     },
     "ios": {
-      "supportsTablet": true,
+      "supportsTablet": false,
       "bundleIdentifier": "com.pulseblocks.game",
       "appleTeamId": "L6G922MBP2",
       "buildNumber": "1",
