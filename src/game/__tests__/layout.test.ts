@@ -204,3 +204,40 @@ describe('computeBoardMetrics', () => {
     expect(cellStride).toBe(cellSize + gap);
   });
 });
+
+/**
+ * Tray pieces must fit inside their slot.
+ *
+ * The slot size came from the screen width and the piece size from the board's
+ * cell size, with nothing tying the two together — so a five-block bar drawn at
+ * a fixed 0.58 scale overhung its slot by 20pt on every iPhone and 49pt on a
+ * 13" iPad, where it painted over the Pulse meter and the power-up row.
+ */
+describe('tray piece fit', () => {
+  const TRAY_VIEWPORTS: [number, number, string][] = [
+    [320, 568, 'iPhone SE (1st gen)'],
+    [375, 667, 'iPhone SE'],
+    [402, 874, 'iPhone 17'],
+    [440, 956, 'iPhone 17 Pro Max'],
+    [360, 800, 'Android compact'],
+    [411, 731, 'Android 1080x1920 @420dpi'],
+    [744, 1133, 'iPad mini'],
+    [820, 1180, 'iPad Air 11"'],
+    [1032, 1376, 'iPad Pro 13"'],
+  ];
+
+  // Five cells in a line is the longest span any shape in the set reaches.
+  const LONGEST_SPAN = 5;
+
+  it.each(TRAY_VIEWPORTS)('fits a five-block bar on %ix%i (%s)', (width, height) => {
+    const m = computeBoardMetrics(width, height);
+    const span = (LONGEST_SPAN * m.cellSize + (LONGEST_SPAN - 1) * m.gap) * m.trayScale;
+    expect(span).toBeLessThanOrEqual(m.traySlotSize);
+  });
+
+  it('never draws tray pieces larger than the design scale', () => {
+    for (const [width, height] of TRAY_VIEWPORTS) {
+      expect(computeBoardMetrics(width, height).trayScale).toBeLessThanOrEqual(0.58);
+    }
+  });
+});

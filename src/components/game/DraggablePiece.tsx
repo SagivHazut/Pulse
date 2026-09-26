@@ -10,7 +10,6 @@ import {
   type SharedValue,
 } from 'react-native-reanimated';
 
-import { ANIMATION } from '../../constants/config';
 import {
   canPlaceOnGrid,
   cellUnderPiece,
@@ -82,6 +81,9 @@ export function DraggablePiece({ piece, slotIndex, slotCenters, slotSize, dead }
   const lastValid = useSharedValue(-1);
 
   const { cellSize, gap, cellStride: stride } = metrics;
+  // A plain number, so the gesture worklets below capture the value rather
+  // than the metrics object.
+  const trayScale = metrics.trayScale;
   const fullWidth = pieceWidth(piece, cellSize, gap);
   const fullHeight = pieceHeight(piece, cellSize, gap);
 
@@ -163,7 +165,7 @@ export function DraggablePiece({ piece, slotIndex, slotCenters, slotSize, dead }
         dragId.value = motion.session.value;
         motion.active.value = 1;
         motion.wobble.value = 0;
-        motion.scale.value = ANIMATION.trayScale;
+        motion.scale.value = trayScale;
         track(0, 0);
         motion.scale.value = withSpring(1, { damping: 16, stiffness: 320 });
         runOnJS(beginDrag)();
@@ -225,7 +227,7 @@ export function DraggablePiece({ piece, slotIndex, slotCenters, slotSize, dead }
 
         // Fly home, then hand rendering back to the tray slot.
         const rest = home();
-        motion.scale.value = withSpring(ANIMATION.trayScale, { damping: 18, stiffness: 300 });
+        motion.scale.value = withSpring(trayScale, { damping: 18, stiffness: 300 });
         motion.centerX.value = withSpring(rest.x, { damping: 20, stiffness: 240 });
         motion.centerY.value = withSpring(rest.y, { damping: 20, stiffness: 240 }, (finished) => {
           'worklet';
@@ -263,6 +265,7 @@ export function DraggablePiece({ piece, slotIndex, slotCenters, slotSize, dead }
     slotCenters,
     slotIndex,
     stride,
+    trayScale,
   ]);
 
   return (
@@ -285,7 +288,7 @@ export function DraggablePiece({ piece, slotIndex, slotCenters, slotSize, dead }
         <View
           style={[
             {
-              transform: [{ scale: ANIMATION.trayScale }],
+              transform: [{ scale: trayScale }],
               // Hidden — not unmounted — while the drag layer owns this piece.
               opacity: isAirborne ? 0 : dead ? 0.32 : 1,
             },

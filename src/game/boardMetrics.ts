@@ -1,4 +1,5 @@
-import { GAME_CONFIG } from '../constants/config';
+import { ANIMATION, GAME_CONFIG } from '../constants/config';
+import { SHAPES } from './pieces/shapes';
 import { SPACING } from '../theme/tokens';
 
 /**
@@ -97,9 +98,13 @@ export type BoardMetrics = {
   cellStride: number;
   padding: number;
   gap: number;
-  /** Piece size inside a tray slot. */
-  trayCellSize: number;
   traySlotSize: number;
+  /**
+   * Scale a piece is drawn at while it sits in the tray, relative to board
+   * cells. The design value, shrunk only where the longest piece would not fit
+   * its slot at that value.
+   */
+  trayScale: number;
   screenWidth: number;
   screenHeight: number;
   isCompact: boolean;
@@ -108,6 +113,23 @@ export type BoardMetrics = {
 
 /** Rounds to whole device pixels. Injected so this module stays platform-free. */
 export type RoundFn = (value: number) => number;
+
+/** Longest run of cells in any shape, across or down. Five, for the I5 bars. */
+const LONGEST_PIECE_SPAN = Math.max(...SHAPES.map((shape) => Math.max(shape.width, shape.height)));
+
+/**
+ * The largest tray scale, up to the design value, at which every piece fits
+ * inside its slot.
+ *
+ * The slot is sized from the screen width and the piece from the board's cell
+ * size, and nothing tied the two together. At a fixed 0.58 a five-block bar
+ * overhung its slot by 20pt on every iPhone and by 49pt on a 13" iPad, where it
+ * painted over the Pulse meter and the power-up row.
+ */
+function fitTrayScale(cellSize: number, slotSize: number): number {
+  const span = LONGEST_PIECE_SPAN * cellSize + (LONGEST_PIECE_SPAN - 1) * CELL_GAP;
+  return Math.min(ANIMATION.trayScale, slotSize / span);
+}
 
 export function computeBoardMetricsWith(
   width: number,
@@ -134,8 +156,7 @@ export function computeBoardMetricsWith(
   const cellStride = cellSize + CELL_GAP;
 
   const traySlotSize = round(Math.min((width - horizontalInset * 2) / 3.4, 132));
-  // Tray pieces are drawn at ~58% of board scale so a 5-long bar still fits.
-  const trayCellSize = round(cellSize * 0.58);
+  const trayScale = fitTrayScale(cellSize, traySlotSize);
 
   return {
     boardSize,
@@ -143,8 +164,8 @@ export function computeBoardMetricsWith(
     cellStride,
     padding: BOARD_PADDING,
     gap: CELL_GAP,
-    trayCellSize,
     traySlotSize,
+    trayScale,
     screenWidth: width,
     screenHeight: height,
     isCompact: height < 700,
