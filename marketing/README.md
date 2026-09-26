@@ -14,9 +14,15 @@ screenshots/ios/       1320 x 2868   iPhone 17 Pro Max — the App Store 6.9" si
   05-settings       level bar, audio and accessibility toggles, lifetime stats
   06-achievements   seven of ten unlocked
   07-block-styles   the four block finishes
+  08-combo          a video frame: the PULSE x5 combo burst
+  09-drag-preview   a video frame: a piece over the row it will clear
 
 screenshots/android/   1080 x 1920   Pixel-class emulator
   01-home  02-themes  03-daily  04-settings  05-gameplay
+
+app-store/             composed listing images — upload these, not the raw captures
+  6.9-inch/  1320 x 2868      6.5-inch/  1284 x 2778
+  regenerate: python3 scripts/compose-store-shots.py
 
 video/                 raw, unedited, no music
   ios-gameplay.mp4       33s   a run: line clear, combo, bomb power-up
