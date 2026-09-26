@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useState } from 'react';
 import { ScrollView, StyleSheet, Text, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
@@ -40,6 +40,15 @@ export function SettingsScreen() {
   const unlockedAchievements = usePlayerStore((s) => s.unlockedAchievements);
 
   const progress = levelProgress(xp);
+
+  // Tiles are sized from the grid's measured width rather than fixed. At a fixed
+  // 76pt, four tiles left a dead strip on the right of every wide phone while
+  // "Ten Thousand" still truncated to "Ten Thous…" inside its own tile.
+  const [gridWidth, setGridWidth] = useState(0);
+  const tileWidth =
+    gridWidth > 0
+      ? Math.floor((gridWidth - ACHIEVEMENT_GAP * (ACHIEVEMENT_COLUMNS - 1)) / ACHIEVEMENT_COLUMNS)
+      : ACHIEVEMENT_FALLBACK_WIDTH;
 
   return (
     <View style={[styles.root, { backgroundColor: theme.colors.background }]}>
@@ -115,7 +124,10 @@ export function SettingsScreen() {
         </Section>
 
         <Section title="Achievements">
-          <View style={styles.achievements}>
+          <View
+            style={styles.achievements}
+            onLayout={(event) => setGridWidth(event.nativeEvent.layout.width)}
+          >
             {ACHIEVEMENTS.map((achievement) => {
               const owned = unlockedAchievements.includes(achievement.id);
               return (
@@ -131,6 +143,7 @@ export function SettingsScreen() {
                   style={[
                     styles.achievement,
                     {
+                      width: tileWidth,
                       backgroundColor: theme.colors.surfaceSecondary,
                       opacity: owned ? 1 : 0.4,
                       borderColor: owned ? theme.colors.success : 'transparent',
@@ -147,6 +160,13 @@ export function SettingsScreen() {
                   <Text
                     style={{
                       fontSize: FONT_SIZE.heading,
+                      // A fixed line box. Each glyph's own metrics differ — the
+                      // triangle and diamond sat taller than the sparkles — so
+                      // the titles beneath them landed on different baselines.
+                      lineHeight: ACHIEVEMENT_GLYPH_LINE,
+                      height: ACHIEVEMENT_GLYPH_LINE,
+                      includeFontPadding: false,
+                      textAlignVertical: 'center',
                       color: owned ? theme.colors.success : theme.colors.textSecondary,
                     }}
                   >
@@ -154,6 +174,10 @@ export function SettingsScreen() {
                   </Text>
                   <Text
                     numberOfLines={1}
+                    // Backstop for the narrowest phones, where even a full-width
+                    // quarter of the grid is short of the longest title.
+                    adjustsFontSizeToFit
+                    minimumFontScale={0.8}
                     style={{
                       fontSize: 10,
                       fontWeight: FONT_WEIGHT.bold,
@@ -262,6 +286,12 @@ function LinkRow({ label, onPress }: { label: string; onPress: () => void }) {
   );
 }
 
+const ACHIEVEMENT_COLUMNS = 4;
+const ACHIEVEMENT_GAP = SPACING.xs;
+/** Used for the single frame before the grid has been measured. */
+const ACHIEVEMENT_FALLBACK_WIDTH = 76;
+const ACHIEVEMENT_GLYPH_LINE = 34;
+
 const styles = StyleSheet.create({
   root: { flex: 1 },
   header: {
@@ -291,9 +321,8 @@ const styles = StyleSheet.create({
   track: { height: 8, borderRadius: RADIUS.pill, overflow: 'hidden' },
   fill: { height: '100%', borderRadius: RADIUS.pill },
   hint: { fontSize: FONT_SIZE.micro },
-  achievements: { flexDirection: 'row', flexWrap: 'wrap', gap: SPACING.xs },
+  achievements: { flexDirection: 'row', flexWrap: 'wrap', gap: ACHIEVEMENT_GAP },
   achievement: {
-    width: 76,
     height: 62,
     borderRadius: RADIUS.sm,
     borderWidth: 1.5,
