@@ -18,7 +18,7 @@
       "supportsTablet": false,
       "bundleIdentifier": "com.pulseblocks.game",
       "appleTeamId": "L6G922MBP2",
-      "buildNumber": "1",
+      "buildNumber": "2",
       "infoPlist": {
         "UIViewControllerBasedStatusBarAppearance": false,
         "NSUserTrackingUsageDescription": "This identifier is used to show you more relevant ads. You can play the whole game without allowing it.",
