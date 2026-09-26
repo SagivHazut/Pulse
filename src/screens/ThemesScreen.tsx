@@ -4,6 +4,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { AnimatedBackdrop } from '../components/animations/AnimatedBackdrop';
 import { Tile } from '../components/game/Tile';
+import { BackArrow } from '../components/ui/BackArrow';
 import { IconButton } from '../components/ui/IconButton';
 import { PressableScale } from '../components/ui/PressableScale';
 import { useTheme } from '../hooks/useTheme';
@@ -15,7 +16,6 @@ import { useRouterStore } from '../stores/useRouterStore';
 import { showToast } from '../stores/useUiStore';
 import { BLOCK_FINISHES, type BlockFinish } from '../theme/finishes';
 import { THEMES, type Theme } from '../theme/themes';
-import { GLYPH } from '../theme/glyphs';
 import { ELEVATION, FONT_SIZE, FONT_WEIGHT, RADIUS, SPACING } from '../theme/tokens';
 import type { BlockColorId } from '../types';
 
@@ -90,7 +90,7 @@ export function ThemesScreen() {
       <AnimatedBackdrop animated={false} />
 
       <View style={[styles.header, { paddingTop: insets.top + SPACING.xs }]}>
-        <IconButton glyph={GLYPH.back} label="Back" onPress={() => go('home')} />
+        <IconButton icon={(color) => <BackArrow color={color} />} label="Back" onPress={() => go('home')} />
         <Text style={[styles.title, { color: theme.colors.textPrimary }]}>Themes</Text>
         <View
           style={[

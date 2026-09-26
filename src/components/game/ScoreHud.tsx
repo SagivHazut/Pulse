@@ -12,6 +12,7 @@ import { useTheme } from '../../hooks/useTheme';
 import { useAccessibilityAnnounce } from '../../utils/announce';
 import { GLYPH } from '../../theme/glyphs';
 import { FONT_SIZE, FONT_WEIGHT, RADIUS, SPACING } from '../../theme/tokens';
+import { BackArrow } from '../ui/BackArrow';
 import { IconButton } from '../ui/IconButton';
 
 type Props = {
@@ -84,7 +85,7 @@ export function ScoreHud({
   return (
     <View style={styles.wrap}>
       <View style={styles.controls}>
-        <IconButton glyph={GLYPH.back} label="Back to home" onPress={onHome} />
+        <IconButton icon={(color) => <BackArrow color={color} />} label="Back to home" onPress={onHome} />
 
         <View style={styles.spacer} />
 

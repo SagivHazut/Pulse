@@ -5,13 +5,23 @@ import { useTheme } from '../../hooks/useTheme';
 import { FONT_SIZE, RADIUS } from '../../theme/tokens';
 import { PressableScale } from './PressableScale';
 
-type Props = {
-  glyph: string;
+type Common = {
   onPress: () => void;
   label: string;
   size?: number;
   tone?: 'default' | 'accent';
 };
+
+/**
+ * Either a font glyph or a drawn icon, never both. The drawn form is a function
+ * so the button can hand it the resolved tint — the tone-to-colour mapping lives
+ * here, and duplicating it at every call site is how the two drift apart.
+ */
+type Props = Common &
+  (
+    | { glyph: string; icon?: never }
+    | { glyph?: never; icon: (color: string) => React.ReactNode }
+  );
 
 /**
  * Small square control.
@@ -21,9 +31,10 @@ type Props = {
  * and the button all but disappeared. `surface` contrasts in both modes, and the
  * border guarantees an edge even when it does not.
  */
-export function IconButton({ glyph, onPress, label, size = 42, tone = 'default' }: Props) {
+export function IconButton({ glyph, icon, onPress, label, size = 42, tone = 'default' }: Props) {
   const theme = useTheme();
   const isAccent = tone === 'accent';
+  const tint = isAccent ? theme.colors.accent : theme.colors.textSecondary;
 
   return (
     <PressableScale
@@ -43,26 +54,32 @@ export function IconButton({ glyph, onPress, label, size = 42, tone = 'default' 
       ]}
     >
       {/*
-        `includeFontPadding: false` is the fix, and it is Android-only.
-        Roboto reserves ascent/descent padding inside the line box, so centring
-        the Text centres that box rather than the glyph — an arrow, whose optical
-        mass sits high, ends up visibly above centre. Pinning lineHeight to the
-        font size removes the remaining slack so the glyph sits dead centre on
-        both platforms.
+        `includeFontPadding: false` is Android-only, and it matters: Roboto
+        reserves ascent/descent padding inside the line box, so centring the Text
+        centres that box rather than the glyph. Pinning lineHeight to the font
+        size removes the remaining slack.
+
+        It only gets the *box* right, though. A glyph the font draws off-centre
+        inside its own em square stays off-centre — see {@link BackArrow} for the
+        one that did, and had to stop being a glyph.
       */}
-      <Text
-        allowFontScaling={false}
-        style={{
-          color: isAccent ? theme.colors.accent : theme.colors.textSecondary,
-          fontSize: FONT_SIZE.label,
-          lineHeight: FONT_SIZE.label,
-          includeFontPadding: false,
-          textAlign: 'center',
-          textAlignVertical: 'center',
-        }}
-      >
-        {glyph}
-      </Text>
+      {icon ? (
+        icon(tint)
+      ) : (
+        <Text
+          allowFontScaling={false}
+          style={{
+            color: tint,
+            fontSize: FONT_SIZE.label,
+            lineHeight: FONT_SIZE.label,
+            includeFontPadding: false,
+            textAlign: 'center',
+            textAlignVertical: 'center',
+          }}
+        >
+          {glyph}
+        </Text>
+      )}
     </PressableScale>
   );
 }

@@ -2,13 +2,13 @@ import React from 'react';
 import { ScrollView, StyleSheet, Text, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
+import { BackArrow } from '../components/ui/BackArrow';
 import { IconButton } from '../components/ui/IconButton';
 import { APP_NAME } from '../constants/app';
 import { PRIVACY_POLICY, PRIVACY_UPDATED, type LegalBlock } from '../constants/legalContent';
 import { useTheme } from '../hooks/useTheme';
 import { useRouterStore } from '../stores/useRouterStore';
 import { FONT_SIZE, FONT_WEIGHT, SPACING } from '../theme/tokens';
-import { GLYPH } from '../theme/glyphs';
 
 /**
  * The privacy policy, rendered in the app rather than handed to a browser.
@@ -31,7 +31,7 @@ export function PrivacyScreen() {
   return (
     <View style={[styles.root, { backgroundColor: theme.colors.background }]}>
       <View style={[styles.header, { paddingTop: insets.top + SPACING.xs }]}>
-        <IconButton glyph={GLYPH.back} onPress={back} label="Back" />
+        <IconButton icon={(color) => <BackArrow color={color} />} onPress={back} label="Back" />
         <Text style={[styles.title, { color: theme.colors.textPrimary }]}>Privacy</Text>
         {/* Balances the back button so the title stays optically centred. */}
         <View style={styles.headerSpacer} />

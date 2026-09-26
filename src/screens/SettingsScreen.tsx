@@ -3,6 +3,7 @@ import { ScrollView, StyleSheet, Text, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { AnimatedBackdrop } from '../components/animations/AnimatedBackdrop';
+import { BackArrow } from '../components/ui/BackArrow';
 import { IconButton } from '../components/ui/IconButton';
 import { PressableScale } from '../components/ui/PressableScale';
 import { Toggle } from '../components/ui/Toggle';
@@ -23,7 +24,6 @@ import { useRouterStore } from '../stores/useRouterStore';
 import { useSettingsStore } from '../stores/useSettingsStore';
 import { showToast } from '../stores/useUiStore';
 import { APP_VERSION } from '../constants/app';
-import { GLYPH } from '../theme/glyphs';
 import { FONT_SIZE, FONT_WEIGHT, RADIUS, SPACING } from '../theme/tokens';
 
 export function SettingsScreen() {
@@ -46,7 +46,7 @@ export function SettingsScreen() {
       <AnimatedBackdrop animated={false} />
 
       <View style={[styles.header, { paddingTop: insets.top + SPACING.xs }]}>
-        <IconButton glyph={GLYPH.back} label="Back" onPress={back} />
+        <IconButton icon={(color) => <BackArrow color={color} />} label="Back" onPress={back} />
         <Text style={[styles.title, { color: theme.colors.textPrimary }]}>Settings</Text>
         <View style={{ width: 42 }} />
       </View>
