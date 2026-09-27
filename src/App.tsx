@@ -133,15 +133,25 @@ function ThemedStatusBar() {
   return <StatusBar style={theme.mode === 'dark' ? 'light' : 'dark'} />;
 }
 
+/** Owns the toast subscription, so showing one re-renders the toast alone. */
+function ToastHost() {
+  const toast = useUiStore((s) => s.toast);
+  const dismissToast = useUiStore((s) => s.dismissToast);
+  return <Toast message={toast} onDismiss={dismissToast} />;
+}
+
 function RootNavigator() {
   const route = useRouterStore((s) => s.route);
   const go = useRouterStore((s) => s.go);
-  const toast = useUiStore((s) => s.toast);
-  const dismissToast = useUiStore((s) => s.dismissToast);
   const theme = useTheme();
 
-  const persist = useGameStore((s) => s.persist);
-  const status = useGameStore((s) => s.status);
+  /**
+   * Nothing here subscribes to game or toast state. The navigator renders the
+   * active screen, and GameScreen takes no props, so any re-render here is a
+   * full re-render of the game. Subscribing to `status` did exactly that twice
+   * per line clear — it flips to 'clearing' and back — and a toast did it twice
+   * more, in the frames where the clear animation was trying to run.
+   */
   const appState = useRef<AppStateStatus>(AppState.currentState);
 
   // Splash hands off to home; the router starts on 'splash' so nothing flashes.
@@ -156,13 +166,14 @@ function RootNavigator() {
       appState.current = next;
 
       if (wasActive && next.match(/inactive|background/)) {
-        if (status === 'playing') persist();
+        const game = useGameStore.getState();
+        if (game.status === 'playing') game.persist();
         stopMusic();
       } else if (!wasActive && next === 'active') {
         startMusic();
       }
     },
-    [persist, status],
+    [],
   );
 
   useEffect(() => {
@@ -207,7 +218,7 @@ function RootNavigator() {
         <HomeScreen />
       )}
 
-      <Toast message={toast} onDismiss={dismissToast} />
+      <ToastHost />
       {/* Renders only when the mock provider presents an ad — never in release. */}
       <MockAdOverlay />
     </View>
