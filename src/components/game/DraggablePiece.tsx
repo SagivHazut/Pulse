@@ -2,6 +2,7 @@ import React, { useCallback, useMemo } from 'react';
 import { View } from 'react-native';
 import { Gesture, GestureDetector } from 'react-native-gesture-handler';
 import {
+  Easing,
   runOnJS,
   useSharedValue,
   withSequence,
@@ -51,6 +52,9 @@ type Props = {
  *  - The JS thread only hears about the drag when the snapped target cell
  *    changes, which drives the ghost and the completing-line highlight.
  */
+/** How long a rejected piece takes to fly back to its tray slot. */
+const FLY_HOME_MS = 260;
+
 export function DraggablePiece({ piece, slotIndex, slotCenters, slotSize, dead }: Props) {
   const theme = useTheme();
   const {
@@ -229,11 +233,33 @@ export function DraggablePiece({ piece, slotIndex, slotCenters, slotSize, dead }
           runOnJS(onInvalidDrop)();
         }
 
-        // Fly home, then hand rendering back to the tray slot.
+        // The ghost goes the moment the finger lifts. It used to be cleared only
+        // once the flight home completed, so a rejected drop left a red outline
+        // on the board for as long as that took — seconds, or for good.
+        lastRow.value = -999;
+        lastCol.value = -999;
+        lastValid.value = -1;
+        runOnJS(setDragPreview)(null);
+
+        /**
+         * Fly home on a fixed clock, then hand rendering back to the tray slot.
+         *
+         * This was a spring, and handing the piece back waited on the spring
+         * reporting it had finished. Reanimated only declares a spring finished
+         * once its energy falls below 6e-9 of where it started, which measured on
+         * device took over two seconds per drop and sometimes never came — the
+         * piece looked home while the drag layer still owned it. A timed flight
+         * finishes exactly when it says it will. `back` keeps a little of the
+         * spring's overshoot in the landing.
+         */
         const rest = home();
-        motion.scale.value = withSpring(trayScale, { damping: 18, stiffness: 300 });
-        motion.centerX.value = withSpring(rest.x, { damping: 20, stiffness: 240 });
-        motion.centerY.value = withSpring(rest.y, { damping: 20, stiffness: 240 }, (finished) => {
+        const flight = { duration: FLY_HOME_MS, easing: Easing.out(Easing.back(1.4)) };
+        motion.scale.value = withTiming(trayScale, {
+          duration: FLY_HOME_MS,
+          easing: Easing.out(Easing.cubic),
+        });
+        motion.centerX.value = withTiming(rest.x, flight);
+        motion.centerY.value = withTiming(rest.y, flight, (finished) => {
           'worklet';
           // Hand the piece back to the tray only if this flight actually landed
           // and still owns the layer. A cancelled flight means a live drag took

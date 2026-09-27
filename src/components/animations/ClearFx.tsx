@@ -172,9 +172,13 @@ const Blast = memo(function Blast({
     const cy = targetRow.value * stride + cellSize / 2;
     return {
       opacity: on ? Math.max(0, 1 - p) : 0,
-      left: cx - size / 2,
-      top: cy - size / 2,
-      transform: [{ scale: 0.25 + p * 1.35 }],
+      // Placed by translate rather than left/top, so every frame stays on
+      // Reanimated's direct path instead of forcing a layout pass.
+      transform: [
+        { translateX: cx - size / 2 },
+        { translateY: cy - size / 2 },
+        { scale: 0.25 + p * 1.35 },
+      ],
     };
   });
 
@@ -185,9 +189,11 @@ const Blast = memo(function Blast({
     const cy = targetRow.value * stride + cellSize / 2;
     return {
       opacity: on ? Math.max(0, 0.9 - p * 1.4) : 0,
-      left: cx - size / 2,
-      top: cy - size / 2,
-      transform: [{ scale: 0.2 + Math.min(1, p * 2.5) * 0.75 }],
+      transform: [
+        { translateX: cx - size / 2 },
+        { translateY: cy - size / 2 },
+        { scale: 0.2 + Math.min(1, p * 2.5) * 0.75 },
+      ],
     };
   });
 
@@ -206,6 +212,7 @@ const Blast = memo(function Blast({
         pointerEvents="none"
         style={[
           styles.abs,
+          styles.origin,
           {
             width: size,
             height: size,
@@ -326,5 +333,6 @@ export const ClearFx = memo(function ClearFx({
 
 const styles = StyleSheet.create({
   abs: { position: 'absolute' },
+  origin: { left: 0, top: 0 },
   core: { backgroundColor: '#FFFFFF' },
 });

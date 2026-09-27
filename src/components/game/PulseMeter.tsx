@@ -28,8 +28,11 @@ export function PulseMeter({ value, combo, freezeCharges, reducedMotion }: Props
       : withSpring(value, { damping: 18, stiffness: 200 });
   }, [value, reducedMotion, fill]);
 
+  // Scaled, not resized. Animating `width` forces a layout pass on every frame
+  // and cannot take Reanimated's direct-to-screen path, so the meter competed
+  // with the board for the same frames while a clear was filling it.
   const fillStyle = useAnimatedStyle(() => ({
-    width: `${Math.max(0, Math.min(1, fill.value)) * 100}%`,
+    transform: [{ scaleX: Math.max(0, Math.min(1, fill.value)) }],
   }));
 
   return (
@@ -70,5 +73,7 @@ const styles = StyleSheet.create({
   label: { fontSize: FONT_SIZE.micro, fontWeight: FONT_WEIGHT.bold, letterSpacing: 1.6 },
   badge: { fontSize: FONT_SIZE.micro, fontWeight: FONT_WEIGHT.heavy, letterSpacing: 0.8 },
   track: { height: 6, borderRadius: RADIUS.pill, overflow: 'hidden' },
-  fill: { height: '100%', borderRadius: RADIUS.pill },
+  // Full width, scaled from its left edge. The track's rounded, clipped ends
+  // keep a partly scaled fill looking like a bar rather than a squashed pill.
+  fill: { width: '100%', height: '100%', transformOrigin: 'left' },
 });

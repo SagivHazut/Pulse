@@ -36,6 +36,8 @@ type Spec = {
 };
 
 const POOL_SIZE = 36;
+/** Every dot is drawn at this size and scaled to its own. */
+const BASE_SIZE = 10;
 const BURST_MS = 700;
 
 const IDLE: Spec = { x: -100, y: -100, color: 'transparent', size: 0, dx: 0, dy: 0, life: 1 };
@@ -49,22 +51,21 @@ const Particle = memo(function Particle({
   specs: SharedValue<Spec[]>;
   progress: SharedValue<number>;
 }) {
+  // Only transform, opacity and colour change per frame. Those are the props
+  // Reanimated can write straight to the screen; `left`/`top`/`width` force a
+  // layout pass every frame instead. The dot is a fixed-size circle at the
+  // origin, moved and sized purely by its transform.
   const style = useAnimatedStyle(() => {
     const spec = specs.value[index] ?? IDLE;
     const p = Math.min(1, progress.value / spec.life);
     return {
-      left: spec.x - spec.size / 2,
-      top: spec.y - spec.size / 2,
-      width: spec.size,
-      height: spec.size,
-      borderRadius: spec.size / 2,
       backgroundColor: spec.color,
       opacity: spec.size === 0 ? 0 : 1 - p * p,
       transform: [
-        { translateX: spec.dx * p },
+        { translateX: spec.x - BASE_SIZE / 2 + spec.dx * p },
         // A little gravity keeps the burst from looking like a starburst decal.
-        { translateY: spec.dy * p + 46 * p * p },
-        { scale: 1 - 0.45 * p },
+        { translateY: spec.y - BASE_SIZE / 2 + spec.dy * p + 46 * p * p },
+        { scale: (spec.size / BASE_SIZE) * (1 - 0.45 * p) },
       ],
     };
   });
@@ -126,5 +127,12 @@ export function ParticleField({ nonce, points, colors, intensity = 1, enabled = 
 }
 
 const styles = StyleSheet.create({
-  particle: { position: 'absolute' },
+  particle: {
+    position: 'absolute',
+    left: 0,
+    top: 0,
+    width: BASE_SIZE,
+    height: BASE_SIZE,
+    borderRadius: BASE_SIZE / 2,
+  },
 });
