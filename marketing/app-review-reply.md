@@ -1,42 +1,45 @@
 # Reply to App Review — Guideline 2.1 Information Needed
 
-Paste the reply below into **Reply to App Review**, and paste the same text into
-**App Review Information → Notes** (Apple asked for both). Attach the screen
-recording to the reply.
+Paste everything between the two lines into **Reply to App Review** (with the
+screen recording attached), and the same text into **App Review Information →
+Notes**.
 
 ---
 
-Hello, thank you for reviewing Pulse Blocks. Please find the requested information below, and the screen recording attached.
+Hi,
 
-1. SCREEN RECORDING
-Attached: a recording on a physical iPhone running the latest iOS, starting from launch. It shows the home screen, starting a game, dragging pieces to clear lines, combos, the Bomb and Bolt power-ups, the daily reward, themes, settings, the privacy policy, and a rewarded ad.
-The app has no account registration, no login, no user-generated content and no paid content, so none of those flows exist.
+Thanks for taking the time to review Pulse Blocks. Here's everything you asked for.
 
-2. PURPOSE AND TARGET AUDIENCE
-Pulse Blocks is a casual block puzzle game for players aged 13 and over. Players drag pieces onto an 8x8 board and clear full rows and columns to score points. It offers a relaxing, short-session puzzle to pick up at any time, with no timer and no pressure. There are two modes: Classic, and Pulse, which adds power blocks and a Pulse meter that awards free power-ups.
+1. Screen recording
+I've attached a recording from my iPhone on the latest iOS. It starts from launching the app and goes through a normal game: clearing lines, combos, the Bomb and Bolt power-ups, the daily reward, themes, settings and the privacy policy, and one of the "watch ad" buttons. There's no sign-up, login, user content or paid content in the app, so there's nothing like that to show.
 
-3. HOW TO ACCESS THE MAIN FEATURES
-No login, credentials or setup are required. Everything is available from the first launch.
-- Home screen: pick Classic or Pulse, then tap PLAY. A short first-run tutorial explains dragging.
-- Gameplay: drag a piece from the tray onto the board. Fill a row or column to clear it; clearing on consecutive turns builds a combo.
-- Power-ups (Pulse mode): tap Bomb, Bolt or Refresh at the bottom, then tap a cell on the board. The + button opens the power-up shop, where power-ups are bought with coins earned in play, never with real money.
-- Daily reward: tap DAILY on the home screen.
-- Themes and block styles: tap THEMES on the home screen; they unlock with levels and coins earned in play.
-- Settings: sound, music, haptics, reduced motion, statistics, achievements, and the privacy policy.
-- Rewarded ads are always optional: watching one continues a run (once per game), doubles the coins from a finished game, doubles a daily reward, or grants one free power-up.
+2. What the app is and who it's for
+Pulse Blocks is a casual block puzzle for players 13 and up. You drag pieces onto an 8x8 board and clear full rows and columns. There's no timer, so it's meant to be something relaxing you can play for a minute or an hour. It has two modes: Classic, and Pulse, which adds power blocks and a meter that gives you free power-ups as you clear lines.
 
-4. EXTERNAL SERVICES
-- Google AdMob (Google Mobile Ads SDK): serves rewarded ads.
-- Google User Messaging Platform: shows the consent form where required by law (EEA, UK, Switzerland, and applicable US states).
-- Apple App Tracking Transparency: asks permission before personalised ads.
-There is no backend server, no account system, no analytics service, no payment processor and no AI service. All game progress is stored only on the device.
+3. How to use it
+There's no account or setup. Everything works from the first launch.
+- On the home screen, pick Classic or Pulse and tap PLAY. A short tutorial shows how to drag pieces the first time.
+- Drag a piece from the bottom onto the board. Filling a row or column clears it, and clearing on back-to-back turns builds a combo.
+- In Pulse mode, tap Bomb, Bolt or Refresh at the bottom, then tap a spot on the board. The + button opens a shop where you spend coins you've earned by playing. Nothing in the app costs real money.
+- DAILY on the home screen gives a daily coin reward.
+- THEMES lets you change the look of the board. New themes unlock as you level up.
+- Settings has sound, music, vibration, reduced motion, your stats and achievements, and the privacy policy.
+- Ads are always optional. You can watch one to keep playing once per game, to double your coins at the end of a game, to double the daily reward, or to get one free power-up.
 
-5. REGIONAL DIFFERENCES
-The app functions the same in every region. The only difference is legally required ad consent: players in the EEA, UK, Switzerland and applicable US states see a consent form before ads are shown. Ad content itself varies by region as served by Google.
+4. Outside services
+- Google AdMob, for the optional rewarded ads.
+- Google's consent tool (User Messaging Platform), to ask for ad consent where the law requires it.
+- Apple's App Tracking Transparency prompt, before any personalized ads.
+That's all of them. There's no server, no accounts, no analytics, no payments and no AI. Your progress is only saved on your own phone.
 
-6. REGULATED INDUSTRY / THIRD-PARTY MATERIAL
-Not applicable. The app is not in a regulated industry and does not contain protected third-party material. All artwork, sounds and code are original to the app; the sounds are synthesised by the app's own build tooling.
+5. Regional differences
+The app works the same everywhere. The only difference is that players in the EU, UK, Switzerland and some US states see a consent screen for ads first, as the law requires there. The ads themselves are chosen by Google and can vary by country.
+
+6. Regulated content
+Not applicable. It's a puzzle game, and all of the art, sound and code is my own. The sound effects are generated by a script I wrote for the app.
 
 Privacy policy: https://sagivhazut.github.io/Pulse/privacy.html
 
-Thank you.
+Thanks again, and let me know if you need anything else.
+
+Sagiv
