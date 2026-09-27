@@ -56,6 +56,13 @@ export type GameStatus = 'idle' | 'playing' | 'clearing' | 'gameover';
 export type ClearEvent = {
   id: number;
   cells: Coord[];
+  /** The full rows and columns that cleared, so the effect can sweep each one. */
+  lines: { rows: number[]; cols: number[] };
+  /**
+   * Set when a player-triggered power-up caused this clear rather than a
+   * placement, so the effect can draw a bomb blast or a bolt instead.
+   */
+  power: { kind: 'bomb' | 'lightning'; row: number; col: number } | null;
   linesCleared: number;
   combo: number;
   tier: ComboTier;
@@ -388,6 +395,8 @@ export const useGameStore = create<GameState>((set, get) => ({
         ? {
             id: (eventId += 1),
             cells: result.clearedCells,
+            lines: { rows: result.lines.rows, cols: result.lines.cols },
+            power: null,
             linesCleared: result.linesCleared,
             combo: result.combo,
             tier: comboTier(result.combo),
@@ -544,6 +553,8 @@ export const useGameStore = create<GameState>((set, get) => ({
       lastClear: {
         id: (eventId += 1),
         cells: result.clearedCells,
+        lines: { rows: [], cols: [] },
+        power: { kind, row: target.row, col: target.col },
         linesCleared: 0,
         combo: s.combo,
         tier: 'none',
@@ -686,6 +697,8 @@ export const useGameStore = create<GameState>((set, get) => ({
       lastClear: {
         id: (eventId += 1),
         cells: result.clearedCells,
+        lines: { rows: [], cols: [] },
+        power: null,
         linesCleared: 0,
         combo: 0,
         tier: 'none',

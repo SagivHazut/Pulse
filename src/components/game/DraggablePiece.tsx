@@ -21,6 +21,12 @@ import { playSfx } from '../../services/audio';
 import { haptics } from '../../services/haptics';
 import { ELEVATION } from '../../theme/tokens';
 import type { Piece } from '../../types';
+import {
+  releaseDraggingPiece,
+  setDragPreview,
+  setDraggingPiece,
+  useDragStore,
+} from '../../stores/useDragStore';
 import { useDragContext } from './DragContext';
 import { PieceShape, pieceHeight, pieceWidth } from './PieceShape';
 
@@ -55,9 +61,6 @@ export function DraggablePiece({ piece, slotIndex, slotCenters, slotSize, dead }
     rootOrigin,
     occupancy,
     motion,
-    setPreview,
-    setDraggingPiece,
-    draggingPiece,
     onDrop,
     onInvalidDrop,
     enabled,
@@ -95,13 +98,14 @@ export function DraggablePiece({ piece, slotIndex, slotCenters, slotSize, dead }
 
   /** Lift the piece above the finger so the hand never covers it. */
   const liftAmount = Math.max(cellSize * 1.35, 56);
-  const isAirborne = draggingPiece?.id === piece.id;
+  // A boolean selector, so picking up one piece re-renders that piece only.
+  const isAirborne = useDragStore((s) => s.draggingPiece?.id === piece.id);
 
   const beginDrag = useCallback(() => {
     playSfx('pickup');
     haptics.light();
     setDraggingPiece(piece);
-  }, [piece, setDraggingPiece]);
+  }, [piece]);
 
   /**
    * Safe to call from a stale animation: it only relinquishes the drag layer if
@@ -109,9 +113,9 @@ export function DraggablePiece({ piece, slotIndex, slotCenters, slotSize, dead }
    * drag that has already taken over.
    */
   const endDrag = useCallback(() => {
-    setDraggingPiece((current) => (current?.id === piece.id ? null : current));
-    setPreview(null);
-  }, [piece.id, setDraggingPiece, setPreview]);
+    releaseDraggingPiece(piece.id);
+    setDragPreview(null);
+  }, [piece.id]);
 
   const commit = useCallback(
     (row: number, col: number) => onDrop(piece.id, row, col),
@@ -180,7 +184,7 @@ export function DraggablePiece({ piece, slotIndex, slotCenters, slotSize, dead }
             lastValid.value = -1;
             lastRow.value = -999;
             lastCol.value = -999;
-            runOnJS(setPreview)(null);
+            runOnJS(setDragPreview)(null);
           }
           return;
         }
@@ -190,7 +194,7 @@ export function DraggablePiece({ piece, slotIndex, slotCenters, slotSize, dead }
           lastRow.value = row;
           lastCol.value = col;
           lastValid.value = valid;
-          runOnJS(setPreview)({ row, col, valid: valid === 1 });
+          runOnJS(setDragPreview)({ row, col, valid: valid === 1 });
         }
       })
       /**
@@ -260,7 +264,6 @@ export function DraggablePiece({ piece, slotIndex, slotCenters, slotSize, dead }
     onInvalidDrop,
     rootOrigin,
     rows,
-    setPreview,
     shape,
     slotCenters,
     slotIndex,

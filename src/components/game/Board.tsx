@@ -17,18 +17,16 @@ import { useTheme } from '../../hooks/useTheme';
 import { coordKey } from '../../game/engine/board';
 import { cellUnderTap } from '../../game/dragMath';
 import { RADIUS } from '../../theme/tokens';
-import type { Board as BoardType, Coord, Piece, PowerUpKind } from '../../types';
+import type { Board as BoardType, Coord, PowerUpKind } from '../../types';
 import type { BoardMetrics } from '../../utils/layout';
 import { BoardCell } from './BoardCell';
-import type { PreviewState } from './DragContext';
 import { Tile } from './Tile';
+import { useDragStore } from '../../stores/useDragStore';
 
 type Props = {
   board: BoardType;
   clearingCells: readonly Coord[];
   metrics: BoardMetrics;
-  preview: PreviewState | null;
-  draggingPiece: Piece | null;
   tension: number;
   armedPowerUp: PowerUpKind | null;
   reducedMotion: boolean;
@@ -44,8 +42,6 @@ export function Board({
   board,
   clearingCells,
   metrics,
-  preview,
-  draggingPiece,
   tension,
   armedPowerUp,
   reducedMotion,
@@ -55,6 +51,10 @@ export function Board({
 }: Props) {
   const theme = useTheme();
   const { cellSize, cellStride, padding, boardSize } = metrics;
+  // Subscribed here rather than passed down, so a drag re-renders the board
+  // alone — see useDragStore.
+  const preview = useDragStore((s) => s.preview);
+  const draggingPiece = useDragStore((s) => s.draggingPiece);
 
   const clearingKeys = useMemo(() => {
     const set = new Set<string>();

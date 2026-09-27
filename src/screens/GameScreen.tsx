@@ -10,11 +10,12 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { AnimatedBackdrop } from '../components/animations/AnimatedBackdrop';
 import { ComboBadge } from '../components/animations/ComboBadge';
+import { ClearFx } from '../components/animations/ClearFx';
 import { ParticleField } from '../components/animations/Particles';
 import { ScoreFly } from '../components/animations/ScoreFly';
 import { Board } from '../components/game/Board';
 import { DragLayer } from '../components/game/DragLayer';
-import { DragProvider, type PreviewState } from '../components/game/DragContext';
+import { DragProvider } from '../components/game/DragContext';
 import { PieceTray } from '../components/game/PieceTray';
 import { PowerUpBar } from '../components/game/PowerUpBar';
 import { PowerUpShopSheet } from '../components/game/PowerUpShopSheet';
@@ -26,6 +27,7 @@ import { getMode } from '../game/modes';
 import { useTheme } from '../hooks/useTheme';
 import { showRewarded } from '../services/ads';
 import { startMusic } from '../services/audio';
+import { resetDrag } from '../stores/useDragStore';
 import { useGameStore } from '../stores/useGameStore';
 import { useMonetizationStore } from '../stores/useMonetizationStore';
 import { usePlayerStore } from '../stores/usePlayerStore';
@@ -33,7 +35,7 @@ import { useRouterStore } from '../stores/useRouterStore';
 import { useSettingsStore } from '../stores/useSettingsStore';
 import { showToast } from '../stores/useUiStore';
 import { SPACING } from '../theme/tokens';
-import type { Coord, Piece, PowerUpKind } from '../types';
+import type { Coord, PowerUpKind } from '../types';
 import {
   TUTORIAL_CARD_HEIGHT,
   canReserveHeight,
@@ -154,8 +156,6 @@ export function GameScreen() {
   // ------------------------------------------------------------------- drag
   const [shopOpen, setShopOpen] = useState(false);
   const [shopBusy, setShopBusy] = useState(false);
-  const [preview, setPreview] = useState<PreviewState | null>(null);
-  const [draggingPiece, setDraggingPiece] = useState<Piece | null>(null);
 
   const centerX = useSharedValue(0);
   const centerY = useSharedValue(0);
@@ -169,6 +169,10 @@ export function GameScreen() {
     () => ({ centerX, centerY, scale: dragScale, wobble, active, session }),
     [centerX, centerY, dragScale, wobble, active, session],
   );
+
+  // The drag lives in a module store now, so it outlives this screen unless
+  // cleared — leaving it set would show a ghost on the next run's first frame.
+  useEffect(() => resetDrag, []);
 
   const handleDrop = useCallback(
     (pieceId: string, row: number, col: number) => {
@@ -186,10 +190,6 @@ export function GameScreen() {
       rootOrigin,
       occupancy,
       motion,
-      preview,
-      setPreview,
-      draggingPiece,
-      setDraggingPiece,
       onDrop: handleDrop,
       onInvalidDrop: registerInvalidDrop,
       /**
@@ -205,8 +205,6 @@ export function GameScreen() {
       rootOrigin,
       occupancy,
       motion,
-      preview,
-      draggingPiece,
       handleDrop,
       registerInvalidDrop,
       status,
@@ -231,7 +229,19 @@ export function GameScreen() {
 
   useEffect(() => {
     if (!lastClear || reducedMotion) return;
-    const strength = lastClear.tier === 'dramatic' ? 1 : lastClear.tier === 'hype' ? 0.55 : 0;
+    // Weight scales with how big the moment is, not just the combo counter: a
+    // triple from one piece or a bomb should land harder than a single line.
+    const lines = lastClear.linesCleared;
+    const strength =
+      lastClear.tier === 'dramatic' || lines >= 3
+        ? 1
+        : lastClear.power?.kind === 'bomb'
+          ? 0.75
+          : lastClear.tier === 'hype' || lines === 2
+            ? 0.55
+            : lastClear.power?.kind === 'lightning'
+              ? 0.45
+              : 0;
     if (strength > 0) {
       shake.value = withSequence(
         withTiming(strength, { duration: 45 }),
@@ -240,9 +250,9 @@ export function GameScreen() {
         withTiming(0, { duration: 60 }),
       );
     }
-    if (lastClear.tier === 'dramatic' || lastClear.perfectClear) {
+    if (lastClear.tier === 'dramatic' || lastClear.perfectClear || lines >= 3) {
       flash.value = withSequence(
-        withTiming(0.5, { duration: 90 }),
+        withTiming(lastClear.perfectClear ? 0.5 : 0.32, { duration: 90 }),
         withTiming(0, { duration: 260 }),
       );
     }
@@ -267,16 +277,18 @@ export function GameScreen() {
   }));
   const flashStyle = useAnimatedStyle(() => ({ opacity: flash.value }));
 
+  /** Cell (0,0) of the grid, in effects-layer coordinates. */
+  const gridOriginX = boardWindow.x - rootWindow.x;
+  const gridOriginY = boardWindow.y - rootWindow.y;
+
   /** Burst origins in effects-layer coordinates. */
   const particlePoints = useMemo(() => {
     if (!lastClear) return [];
-    const originX = boardWindow.x - rootWindow.x;
-    const originY = boardWindow.y - rootWindow.y;
     return lastClear.cells.map((cell) => ({
-      x: originX + cell.col * metrics.cellStride + metrics.cellSize / 2,
-      y: originY + cell.row * metrics.cellStride + metrics.cellSize / 2,
+      x: gridOriginX + cell.col * metrics.cellStride + metrics.cellSize / 2,
+      y: gridOriginY + cell.row * metrics.cellStride + metrics.cellSize / 2,
     }));
-  }, [lastClear, metrics, boardWindow, rootWindow]);
+  }, [lastClear, metrics, gridOriginX, gridOriginY]);
 
   const scoreAnchor = useMemo(
     () => ({ x: scoreWindow.x - rootWindow.x, y: scoreWindow.y - rootWindow.y }),
@@ -413,8 +425,6 @@ export function GameScreen() {
               board={board}
               clearingCells={clearingCells}
               metrics={metrics}
-              preview={preview}
-              draggingPiece={draggingPiece}
               tension={tension}
               armedPowerUp={armedPowerUp}
               reducedMotion={reducedMotion}
@@ -454,11 +464,40 @@ export function GameScreen() {
 
         {/* Effects sit above the board but below modals, and never take touches. */}
         <View pointerEvents="none" style={StyleSheet.absoluteFill}>
+          <View
+            pointerEvents="none"
+            style={{
+              position: 'absolute',
+              left: gridOriginX,
+              top: gridOriginY,
+              width: GAME_CONFIG.columns * metrics.cellStride - metrics.gap,
+              height: GAME_CONFIG.rows * metrics.cellStride - metrics.gap,
+            }}
+          >
+            <ClearFx
+              event={lastClear}
+              cellSize={metrics.cellSize}
+              stride={metrics.cellStride}
+              gap={metrics.gap}
+              lineColor={theme.colors.accent}
+              boltColor={theme.colors.accent}
+              blastColor={theme.colors.warning}
+              reducedMotion={reducedMotion}
+            />
+          </View>
           <ParticleField
             nonce={lastClear?.id ?? 0}
             points={particlePoints}
             colors={theme.particles}
-            intensity={lastClear?.tier === 'dramatic' ? 1.6 : lastClear?.tier === 'hype' ? 1.2 : 1}
+            intensity={
+              lastClear?.tier === 'dramatic' || (lastClear?.linesCleared ?? 0) >= 3
+                ? 1.6
+                : lastClear?.tier === 'hype' ||
+                    lastClear?.linesCleared === 2 ||
+                    lastClear?.power?.kind === 'bomb'
+                  ? 1.25
+                  : 1
+            }
             enabled={!reducedMotion}
           />
           <ScoreFly
@@ -476,6 +515,8 @@ export function GameScreen() {
               nonce={lastClear?.id ?? 0}
               combo={lastClear?.combo ?? combo}
               tier={lastClear?.tier ?? 'none'}
+              lines={lastClear?.linesCleared ?? 0}
+              perfectClear={lastClear?.perfectClear ?? false}
               reducedMotion={reducedMotion}
             />
           </View>

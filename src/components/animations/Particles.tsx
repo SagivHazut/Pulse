@@ -1,77 +1,76 @@
-import React, { memo, useEffect, useRef, useState } from 'react';
-import { StyleSheet } from 'react-native';
+import React, { memo, useEffect, useRef } from 'react';
+import { StyleSheet, View } from 'react-native';
 import Animated, {
   Easing,
   useAnimatedStyle,
   useSharedValue,
   withTiming,
+  type SharedValue,
 } from 'react-native-reanimated';
 
 /**
- * Lightweight particle bursts.
+ * Particle bursts, drawn from a fixed pool.
  *
- * Deliberately not a physics engine: each particle is one Animated.View driving
- * a single 0→1 shared value, and the total count is capped so a ten-line cascade
- * costs the same as a single clear. Bursts unmount themselves when finished.
+ * The previous version mounted a fresh Animated.View — with its own shared value,
+ * effect and animated style — for every particle, at the instant a line cleared.
+ * Up to 44 of them, in the same frame as the clear's own re-render, which is
+ * exactly when the game already had the most work to do. That mount storm is what
+ * made combos stutter on device.
+ *
+ * Now {@link POOL_SIZE} particles are mounted once with the screen and stay
+ * mounted. A burst writes one array of specs and restarts one progress value;
+ * every particle reads its own slot on the UI thread. A clear costs two shared
+ * value writes and no React work at all.
  */
 
-export type ParticleSpec = {
+type Spec = {
   x: number;
   y: number;
   color: string;
   size: number;
-  angle: number;
-  distance: number;
-  duration: number;
+  /** Final offset from the origin, precomputed so the worklet only scales it. */
+  dx: number;
+  dy: number;
+  /** 0–1 share of the burst's duration this particle lives for. */
+  life: number;
 };
 
-const MAX_PARTICLES = 44;
+const POOL_SIZE = 36;
+const BURST_MS = 700;
 
-const Particle = memo(function Particle({ spec }: { spec: ParticleSpec }) {
-  const progress = useSharedValue(0);
+const IDLE: Spec = { x: -100, y: -100, color: 'transparent', size: 0, dx: 0, dy: 0, life: 1 };
 
-  useEffect(() => {
-    progress.value = withTiming(1, {
-      duration: spec.duration,
-      easing: Easing.out(Easing.quad),
-    });
-  }, [progress, spec.duration]);
-
+const Particle = memo(function Particle({
+  index,
+  specs,
+  progress,
+}: {
+  index: number;
+  specs: SharedValue<Spec[]>;
+  progress: SharedValue<number>;
+}) {
   const style = useAnimatedStyle(() => {
-    const p = progress.value;
-    const dx = Math.cos(spec.angle) * spec.distance * p;
-    // A little gravity keeps the burst from looking like a starburst decal.
-    const dy = Math.sin(spec.angle) * spec.distance * p + 46 * p * p;
+    const spec = specs.value[index] ?? IDLE;
+    const p = Math.min(1, progress.value / spec.life);
     return {
-      opacity: 1 - p * p,
-      transform: [{ translateX: dx }, { translateY: dy }, { scale: 1 - 0.45 * p }],
+      left: spec.x - spec.size / 2,
+      top: spec.y - spec.size / 2,
+      width: spec.size,
+      height: spec.size,
+      borderRadius: spec.size / 2,
+      backgroundColor: spec.color,
+      opacity: spec.size === 0 ? 0 : 1 - p * p,
+      transform: [
+        { translateX: spec.dx * p },
+        // A little gravity keeps the burst from looking like a starburst decal.
+        { translateY: spec.dy * p + 46 * p * p },
+        { scale: 1 - 0.45 * p },
+      ],
     };
   });
 
-  return (
-    <Animated.View
-      pointerEvents="none"
-      style={[
-        {
-          position: 'absolute',
-          left: spec.x - spec.size / 2,
-          top: spec.y - spec.size / 2,
-          width: spec.size,
-          height: spec.size,
-          borderRadius: spec.size / 2,
-          backgroundColor: spec.color,
-        },
-        style,
-      ]}
-    />
-  );
+  return <Animated.View pointerEvents="none" style={[styles.particle, style]} />;
 });
-
-type Burst = { id: number; specs: ParticleSpec[] };
-
-export type ParticleFieldHandle = {
-  burst(points: { x: number; y: number }[], colors: string[], intensity?: number): void;
-};
 
 type Props = {
   /** Increment to trigger; the field reads `points` when this changes. */
@@ -83,7 +82,8 @@ type Props = {
 };
 
 export function ParticleField({ nonce, points, colors, intensity = 1, enabled = true }: Props) {
-  const [bursts, setBursts] = useState<Burst[]>([]);
+  const specs = useSharedValue<Spec[]>([]);
+  const progress = useSharedValue(1);
   const lastNonce = useRef(0);
 
   useEffect(() => {
@@ -91,43 +91,40 @@ export function ParticleField({ nonce, points, colors, intensity = 1, enabled = 
     lastNonce.current = nonce;
 
     const perPoint = Math.max(1, Math.round(3 * intensity));
-    const budget = Math.min(MAX_PARTICLES, points.length * perPoint);
-    const step = Math.max(1, Math.floor((points.length * perPoint) / budget));
+    const wanted = points.length * perPoint;
+    const count = Math.min(POOL_SIZE, wanted);
+    const step = wanted / count;
 
-    const specs: ParticleSpec[] = [];
-    for (let i = 0; i < points.length * perPoint; i += step) {
-      const point = points[i % points.length];
+    const next: Spec[] = [];
+    for (let i = 0; i < count; i += 1) {
+      const point = points[Math.floor(i * step) % points.length];
       const angle = Math.random() * Math.PI * 2;
-      specs.push({
+      const distance = (26 + Math.random() * 48) * intensity;
+      next.push({
         x: point.x,
         y: point.y,
         color: colors[Math.floor(Math.random() * colors.length)],
         size: 4 + Math.random() * 5 * intensity,
-        angle,
-        distance: (26 + Math.random() * 48) * intensity,
-        duration: 420 + Math.random() * 260,
+        dx: Math.cos(angle) * distance,
+        dy: Math.sin(angle) * distance,
+        life: 0.6 + Math.random() * 0.4,
       });
-      if (specs.length >= budget) break;
     }
 
-    const burst: Burst = { id: nonce, specs };
-    setBursts((prev) => [...prev.slice(-2), burst]);
-
-    const timer = setTimeout(() => {
-      setBursts((prev) => prev.filter((b) => b.id !== burst.id));
-    }, 760);
-    return () => clearTimeout(timer);
-  }, [nonce, points, colors, intensity, enabled]);
-
-  if (bursts.length === 0) return null;
+    specs.value = next;
+    progress.value = 0;
+    progress.value = withTiming(1, { duration: BURST_MS, easing: Easing.out(Easing.quad) });
+  }, [nonce, points, colors, intensity, enabled, specs, progress]);
 
   return (
-    <Animated.View pointerEvents="none" style={StyleSheet.absoluteFill}>
-      {bursts.map((burst) =>
-        burst.specs.map((spec, index) => (
-          <Particle key={`${burst.id}-${index}`} spec={spec} />
-        )),
-      )}
-    </Animated.View>
+    <View pointerEvents="none" style={StyleSheet.absoluteFill}>
+      {Array.from({ length: POOL_SIZE }, (_, index) => (
+        <Particle key={index} index={index} specs={specs} progress={progress} />
+      ))}
+    </View>
   );
 }
+
+const styles = StyleSheet.create({
+  particle: { position: 'absolute' },
+});

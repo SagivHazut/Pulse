@@ -4,6 +4,7 @@ import Animated, { useAnimatedStyle } from 'react-native-reanimated';
 
 import { useTheme } from '../../hooks/useTheme';
 import { ELEVATION } from '../../theme/tokens';
+import { useDragStore } from '../../stores/useDragStore';
 import { useDragContext } from './DragContext';
 import { PieceShape, pieceHeight, pieceWidth } from './PieceShape';
 
@@ -16,7 +17,8 @@ import { PieceShape, pieceHeight, pieceWidth } from './PieceShape';
  */
 export function DragLayer() {
   const theme = useTheme();
-  const { draggingPiece, motion, metrics } = useDragContext();
+  const { motion, metrics } = useDragContext();
+  const draggingPiece = useDragStore((s) => s.draggingPiece);
 
   const piece = draggingPiece;
   const width = piece ? pieceWidth(piece, metrics.cellSize, metrics.gap) : 0;

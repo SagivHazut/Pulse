@@ -19,51 +19,89 @@ type Props = {
   nonce: number;
   combo: number;
   tier: ComboTier;
+  /** Lines cleared by this one placement. */
+  lines: number;
+  perfectClear: boolean;
   reducedMotion: boolean;
 };
 
+/** What a single placement cleared, in words. */
+function multiLineLabel(lines: number): string | null {
+  if (lines >= 4) return 'MEGA CLEAR';
+  if (lines === 3) return 'TRIPLE';
+  if (lines === 2) return 'DOUBLE';
+  return null;
+}
+
 /**
- * The combo readout. It escalates in wording, size and colour, and never blocks
+ * The clear callout. It escalates in wording, size and colour, and never blocks
  * gameplay — it lives in a `pointerEvents: none` layer and fades on its own.
+ *
+ * It used to appear only for a combo of 2 or more, so the move players feel as
+ * the big one — clearing two or three lines with a single piece — looked exactly
+ * like clearing one. Multi-line clears and perfect clears now get their own
+ * headline, with the running combo underneath when there is one.
  */
-export function ComboBadge({ nonce, combo, tier, reducedMotion }: Props) {
+export function ComboBadge({ nonce, combo, tier, lines, perfectClear, reducedMotion }: Props) {
   const theme = useTheme();
   const progress = useSharedValue(0);
   const scale = useSharedValue(0.6);
+  const tilt = useSharedValue(0);
 
-  const visible = combo >= 2 && tier !== 'none';
+  const multi = multiLineLabel(lines);
+  const hasCombo = combo >= 2 && tier !== 'none';
+  const visible = perfectClear || multi !== null || hasCombo;
+
+  const dramatic = perfectClear || tier === 'dramatic';
+  const hype = dramatic || tier === 'hype' || lines >= 3;
 
   useEffect(() => {
     if (!visible) return;
     if (reducedMotion) {
       progress.value = withSequence(
         withTiming(1, { duration: 120 }),
-        withDelay(700, withTiming(0, { duration: 200 })),
+        withDelay(800, withTiming(0, { duration: 200 })),
       );
       scale.value = 1;
+      tilt.value = 0;
       return;
     }
+    const hold = hype ? 820 : 640;
     progress.value = withSequence(
-      withTiming(1, { duration: 120, easing: Easing.out(Easing.quad) }),
-      withDelay(620, withTiming(0, { duration: 240 })),
+      withTiming(1, { duration: 110, easing: Easing.out(Easing.quad) }),
+      withDelay(hold, withTiming(0, { duration: 260 })),
     );
+    // Overshoot on the way in: a callout that just fades up reads as a label,
+    // one that punches in reads as an event.
     scale.value = withSequence(
-      withSpring(1.14, { damping: 9, stiffness: 340 }),
-      withSpring(1, { damping: 14, stiffness: 260 }),
+      withTiming(0.35, { duration: 0 }),
+      withSpring(hype ? 1.28 : 1.16, { damping: 8, stiffness: 380 }),
+      withSpring(1, { damping: 13, stiffness: 260 }),
     );
-  }, [nonce, visible, reducedMotion, progress, scale]);
+    tilt.value = withSequence(
+      withTiming(hype ? -7 : -4, { duration: 0 }),
+      withSpring(0, { damping: 10, stiffness: 220 }),
+    );
+  }, [nonce, visible, hype, reducedMotion, progress, scale, tilt]);
 
   const style = useAnimatedStyle(() => ({
     opacity: progress.value,
-    transform: [{ scale: scale.value }, { translateY: (1 - progress.value) * 14 }],
+    transform: [
+      { translateY: (1 - progress.value) * 18 },
+      { scale: scale.value },
+      { rotateZ: `${tilt.value}deg` },
+    ],
   }));
 
   if (!visible) return null;
 
-  const dramatic = tier === 'dramatic';
-  const hype = tier === 'hype' || dramatic;
+  const headline = perfectClear
+    ? '✦ PERFECT CLEAR'
+    : multi ??
+      (tier === 'dramatic' ? `⚡ OVERDRIVE x${combo}` : tier === 'hype' ? `🔥 PULSE x${combo}` : `COMBO x${combo}`);
+  // The combo moves underneath when a bigger headline has taken the top line.
+  const subline = (perfectClear || multi !== null) && hasCombo ? `COMBO x${combo}` : null;
 
-  const label = dramatic ? `⚡ OVERDRIVE x${combo}` : hype ? `🔥 PULSE x${combo}` : `COMBO x${combo}`;
   const color = dramatic ? theme.colors.warning : hype ? theme.colors.accent : theme.colors.textPrimary;
 
   return (
@@ -76,6 +114,10 @@ export function ComboBadge({ nonce, combo, tier, reducedMotion }: Props) {
             borderColor: hype ? color : theme.colors.gridLine,
             paddingHorizontal: hype ? SPACING.lg : SPACING.md,
             paddingVertical: hype ? SPACING.sm : SPACING.xs,
+            shadowColor: color,
+            shadowOpacity: hype ? 0.7 : 0.35,
+            shadowRadius: hype ? 18 : 10,
+            shadowOffset: { width: 0, height: 0 },
           },
           style,
         ]}
@@ -85,11 +127,24 @@ export function ComboBadge({ nonce, combo, tier, reducedMotion }: Props) {
             color: dramatic ? '#2A1A00' : color,
             fontSize: dramatic ? FONT_SIZE.heading : hype ? FONT_SIZE.title : FONT_SIZE.label,
             fontWeight: FONT_WEIGHT.heavy,
-            letterSpacing: 1,
+            letterSpacing: 1.5,
           }}
         >
-          {label}
+          {headline}
         </Text>
+        {subline ? (
+          <Text
+            style={{
+              color: dramatic ? '#2A1A00' : theme.colors.textSecondary,
+              fontSize: FONT_SIZE.caption,
+              fontWeight: FONT_WEIGHT.bold,
+              letterSpacing: 1.2,
+              marginTop: 2,
+            }}
+          >
+            {subline}
+          </Text>
+        ) : null}
       </Animated.View>
     </View>
   );
