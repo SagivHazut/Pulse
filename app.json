@@ -27,6 +27,7 @@
     },
     "android": {
       "package": "com.pulseblocks.game",
+      "versionCode": 1,
       "adaptiveIcon": {
         "backgroundColor": "#0A0C17",
         "foregroundImage": "./assets/android-icon-foreground.png",
