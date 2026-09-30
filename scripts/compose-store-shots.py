@@ -6,7 +6,8 @@ Compose App Store screenshots from the raw captures in marketing/screenshots/ios
 
 Each image is a headline over the Neon theme's background, with the real
 capture set in a phone frame beneath it. Output goes to marketing/app-store/,
-one folder per display size App Store Connect asks for.
+one folder per display size App Store Connect asks for, and to
+marketing/google-play/ with the icon and feature graphic Play also needs.
 
 The captures are never retouched. Apple rejects screenshots that show UI the
 app does not have, so everything inside the frame is exactly what the game drew
@@ -22,6 +23,8 @@ from PIL import Image, ImageDraw, ImageFilter, ImageFont
 ROOT = os.path.join(os.path.dirname(__file__), "..")
 SOURCE = os.path.join(ROOT, "marketing", "screenshots", "ios")
 OUT = os.path.join(ROOT, "marketing", "app-store")
+PLAY_OUT = os.path.join(ROOT, "marketing", "google-play")
+ICON = os.path.join(ROOT, "assets", "icon.png")
 
 # App Store Connect's iPhone slots. 6.9" is the one that must be filled; 6.5"
 # is what the listing page shows by default, so both are produced.
@@ -29,6 +32,13 @@ SIZES = {
     "6.9-inch": (1320, 2868),
     "6.5-inch": (1284, 2778),
 }
+
+# Google Play rejects screenshots whose long side is more than twice the short
+# one, which rules out the iPhone sizes. 9:16 at 1080 wide is what Play needs
+# for its larger promotional layouts.
+PLAY_SCREENSHOT = (1080, 1920)
+PLAY_FEATURE = (1024, 500)
+PLAY_ICON = 512
 
 # Neon theme — mirrors src/theme/themes.ts, like scripts/generate-icons.py.
 BACKGROUND_TOP = (17, 21, 49)      # backgroundAlt #111531
@@ -174,16 +184,56 @@ def compose(capture_path: str, headline: str, sub: str, w: int, h: int) -> Image
     return img.convert("RGB")
 
 
+def feature_graphic(w: int, h: int) -> Image.Image:
+    """Play's 1024x500 banner: the icon beside the name and the tagline."""
+    img = background(w, h)
+    d = ImageDraw.Draw(img)
+
+    side = round(h * 0.5)
+    icon = Image.open(ICON).convert("RGBA").resize((side, side), Image.LANCZOS)
+    mask = Image.new("L", (side, side), 0)
+    ImageDraw.Draw(mask).rounded_rectangle([0, 0, side - 1, side - 1], radius=round(side * 0.22), fill=255)
+    x, y = round(w * 0.08), (h - side) // 2
+
+    shadow = Image.new("RGBA", img.size, (0, 0, 0, 0))
+    ImageDraw.Draw(shadow).rounded_rectangle(
+        [x, y + round(h * 0.03), x + side, y + side + round(h * 0.03)], radius=round(side * 0.22), fill=(0, 0, 0, 150)
+    )
+    img = Image.alpha_composite(img, shadow.filter(ImageFilter.GaussianBlur(h * 0.05)))
+    img.paste(icon, (x, y), mask)
+
+    d = ImageDraw.Draw(img)
+    text_x = x + side + round(w * 0.05)
+    room = w - text_x - round(w * 0.06)
+    title = fitted("Pulse Blocks", "Heavy", round(h * 0.2), room, round(h * 0.12))
+    tagline = fitted("Drag. Drop. Clear.", "Semibold", round(h * 0.085), room, round(h * 0.06))
+    d.text((text_x, h / 2 - round(h * 0.02)), "Pulse Blocks", font=title, fill=(255, 255, 255), anchor="ls")
+    d.text((text_x, h / 2 + round(h * 0.1)), "Drag. Drop. Clear.", font=tagline, fill=ACCENT, anchor="ls")
+    return img.convert("RGB")
+
+
+def shot_name(i: int, name: str) -> str:
+    return f"{i:02d}-{os.path.splitext(name)[0].split('-', 1)[1]}.png"
+
+
 def main() -> None:
-    for label, (w, h) in SIZES.items():
-        folder = os.path.join(OUT, label)
+    targets = [(os.path.join(OUT, label), size) for label, size in SIZES.items()]
+    targets.append((os.path.join(PLAY_OUT, "phone"), PLAY_SCREENSHOT))
+    for folder, (w, h) in targets:
         os.makedirs(folder, exist_ok=True)
         for i, (name, headline, sub) in enumerate(SHOTS, start=1):
             out = compose(os.path.join(SOURCE, name), headline, sub, w, h)
             assert out.size == (w, h), (name, out.size)
-            path = os.path.join(folder, f"{i:02d}-{os.path.splitext(name)[0].split('-', 1)[1]}.png")
+            path = os.path.join(folder, shot_name(i, name))
             out.save(path, optimize=True)
-            print(f"{label}  {os.path.basename(path)}  {w}x{h}")
+            print(f"{os.path.relpath(path, ROOT)}  {w}x{h}")
+
+    feature = feature_graphic(*PLAY_FEATURE)
+    feature.save(os.path.join(PLAY_OUT, "feature-graphic.png"), optimize=True)
+    Image.open(ICON).convert("RGBA").resize((PLAY_ICON, PLAY_ICON), Image.LANCZOS).save(
+        os.path.join(PLAY_OUT, "icon-512.png"), optimize=True
+    )
+    print("marketing/google-play/feature-graphic.png, icon-512.png")
 
 
 if __name__ == "__main__":
